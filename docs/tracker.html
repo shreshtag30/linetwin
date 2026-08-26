@@ -1,0 +1,793 @@
+<title>LineTwin Build Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  /* ---------- tokens: complete light palette on bare :root ---------- */
+  :root {
+    --ground:      #F6F4F9;
+    --surface:     #FFFFFF;
+    --surface-alt: #FBFAFC;
+    --line:        #E2DEE9;
+    --line-strong: #CFC8DA;
+    --ink:         #17141C;
+    --ink-mid:     #4A4455;
+    --ink-soft:    #7A7288;
+
+    --accent:      #8400D6;
+    --accent-soft: #F2E4FD;
+    --accent-line: #D9B8F5;
+
+    --done:        #1E7F3C;
+    --done-soft:   #E1F3E6;
+    --active:      #C2540A;
+    --active-soft: #FCEBDF;
+    --blocked:     #B81733;
+    --blocked-soft:#FBE3E8;
+
+    --rail:        #DCD5E6;
+    --shadow:      0 1px 2px rgba(23,20,28,.05), 0 8px 24px -12px rgba(23,20,28,.14);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #131018;
+      --surface:     #1C1824;
+      --surface-alt: #221D2C;
+      --line:        #302941;
+      --line-strong: #453A5C;
+      --ink:         #EFEBF5;
+      --ink-mid:     #B6ADC6;
+      --ink-soft:    #877E99;
+
+      --accent:      #C378FF;
+      --accent-soft: #2D1A44;
+      --accent-line: #58356F;
+
+      --done:        #63C883;
+      --done-soft:   #16301F;
+      --active:      #F0913F;
+      --active-soft: #3A2413;
+      --blocked:     #F07389;
+      --blocked-soft:#3B161F;
+
+      --rail:        #362D48;
+      --shadow:      0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #131018;
+    --surface:     #1C1824;
+    --surface-alt: #221D2C;
+    --line:        #302941;
+    --line-strong: #453A5C;
+    --ink:         #EFEBF5;
+    --ink-mid:     #B6ADC6;
+    --ink-soft:    #877E99;
+
+    --accent:      #C378FF;
+    --accent-soft: #2D1A44;
+    --accent-line: #58356F;
+
+    --done:        #63C883;
+    --done-soft:   #16301F;
+    --active:      #F0913F;
+    --active-soft: #3A2413;
+    --blocked:     #F07389;
+    --blocked-soft:#3B161F;
+
+    --rail:        #362D48;
+    --shadow:      0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+
+  /* ---------- base ---------- */
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 40px 24px 96px;
+  }
+
+  h1, h2, h3 {
+    font-family: Archivo, "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- masthead ---------- */
+  .masthead {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px 32px;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding-bottom: 22px;
+    border-bottom: 2px solid var(--line-strong);
+  }
+
+  .masthead h1 {
+    font-size: clamp(28px, 4.4vw, 40px);
+    font-weight: 700;
+    letter-spacing: -.022em;
+    line-height: 1.08;
+  }
+
+  .masthead .sub {
+    color: var(--ink-mid);
+    font-size: 14px;
+    margin-top: 7px;
+    max-width: 60ch;
+  }
+
+  .scope {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 12px;
+    padding: 4px 11px 4px 8px;
+    border: 1px solid var(--accent-line);
+    background: var(--accent-soft);
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--ink-mid);
+  }
+  .scope b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- status board ---------- */
+  .board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 28px 0 44px;
+  }
+
+  .cell {
+    background: var(--surface);
+    padding: 15px 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .cell .k {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  .cell .v {
+    font-family: Archivo, sans-serif;
+    font-size: 25px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+
+  .cell .v small {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-soft);
+  }
+
+  .cell.now .v { color: var(--active); font-size: 19px; }
+
+  .meter {
+    height: 5px;
+    border-radius: 99px;
+    background: var(--line);
+    overflow: hidden;
+    margin-top: 3px;
+  }
+  .meter i {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+  }
+
+  /* ---------- section heads ---------- */
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin: 0 0 20px;
+  }
+  .sec-head h2 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: .02em;
+  }
+  .sec-head .rule {
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
+  /* ---------- phase rail ---------- */
+  .phases { display: flex; flex-direction: column; gap: 0; }
+
+  .phase {
+    display: grid;
+    grid-template-columns: 62px 1fr;
+    gap: 0 20px;
+    position: relative;
+  }
+
+  /* the connecting line: phases are a genuine dependency sequence */
+  .phase::before {
+    content: "";
+    position: absolute;
+    left: 21px;
+    top: 34px;
+    bottom: -6px;
+    width: 2px;
+    background: var(--rail);
+  }
+  .phase:last-child::before { display: none; }
+
+  .node {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    border: 2px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink-soft);
+    position: relative;
+    z-index: 1;
+  }
+
+  .phase[data-status="done"] .node {
+    border-color: var(--done);
+    background: var(--done);
+    color: #fff;
+  }
+  .phase[data-status="active"] .node {
+    border-color: var(--active);
+    background: var(--active-soft);
+    color: var(--active);
+    box-shadow: 0 0 0 4px var(--active-soft);
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 16px 18px 15px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+  }
+  .phase[data-status="active"] .card { border-color: var(--active); }
+  .phase[data-status="pending"] .card { background: var(--surface-alt); box-shadow: none; }
+
+  .card-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    margin-bottom: 3px;
+  }
+
+  .card h3 {
+    font-size: 16.5px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+
+  .pill {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .pill.done    { background: var(--done-soft);    color: var(--done); }
+  .pill.active  { background: var(--active-soft);  color: var(--active); }
+  .pill.pending { background: var(--line);         color: var(--ink-soft); }
+
+  .card .gist {
+    color: var(--ink-mid);
+    font-size: 13.5px;
+    margin: 2px 0 12px;
+    max-width: 78ch;
+  }
+
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+
+  .steps li {
+    display: grid;
+    grid-template-columns: 17px 1fr;
+    gap: 9px;
+    align-items: start;
+    font-size: 13.5px;
+    color: var(--ink-mid);
+    padding: 1px 0;
+  }
+
+  .steps li::before {
+    content: "";
+    width: 13px;
+    height: 13px;
+    margin-top: 4px;
+    border: 1.5px solid var(--line-strong);
+    border-radius: 2.5px;
+    background: var(--surface);
+  }
+
+  .steps li[data-s="done"] {
+    color: var(--ink);
+  }
+  .steps li[data-s="done"]::before {
+    background: var(--done);
+    border-color: var(--done);
+    /* checkmark */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.5 6.3 4.7 8.5 9.5 3.7' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-size: 11px 11px;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+  .steps li[data-s="active"]::before {
+    border-color: var(--active);
+    box-shadow: inset 0 0 0 2.5px var(--active-soft), inset 0 0 0 6px var(--active);
+  }
+  .steps li[data-s="active"] { color: var(--ink); font-weight: 500; }
+
+  .out {
+    margin-top: 11px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--line);
+    font-size: 12px;
+    color: var(--ink-soft);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 8px;
+    align-items: baseline;
+  }
+  .out b {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .out code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11.5px;
+    background: var(--accent-soft);
+    color: var(--ink-mid);
+    padding: 1.5px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--accent-line);
+  }
+
+  /* ---------- compliance ---------- */
+  .compliance { margin-top: 56px; }
+
+  .cgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 14px;
+  }
+
+  .cblock {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 16px 18px 17px;
+  }
+
+  .cblock h3 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .01em;
+    margin-bottom: 3px;
+  }
+  .cblock .why {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin: 0 0 12px;
+  }
+
+  .cblock ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+  .cblock li {
+    display: grid;
+    grid-template-columns: 15px 1fr;
+    gap: 9px;
+    align-items: start;
+    font-size: 12.8px;
+    color: var(--ink-mid);
+    line-height: 1.45;
+  }
+  .cblock li::before {
+    content: "";
+    width: 12px; height: 12px;
+    margin-top: 3px;
+    border: 1.5px solid var(--line-strong);
+    border-radius: 2.5px;
+  }
+  .cblock li[data-s="done"] { color: var(--ink); }
+  .cblock li[data-s="done"]::before {
+    background: var(--done); border-color: var(--done);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.5 6.3 4.7 8.5 9.5 3.7' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-size: 10px 10px; background-position: center; background-repeat: no-repeat;
+  }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--ink-soft);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    justify-content: space-between;
+  }
+
+  @media (max-width: 620px) {
+    .phase { grid-template-columns: 44px 1fr; gap: 0 14px; }
+    .phase::before { left: 15px; }
+    .node { width: 32px; height: 32px; font-size: 11.5px; }
+    .wrap { padding: 28px 16px 64px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">Accenture Innovation Challenge 2026 &middot; Round 2 &middot; Track 4</p>
+      <h1>LineTwin Build Tracker</h1>
+      <p class="sub">Ten-phase build of a live discrete-event digital twin for a vehicle assembly line —
+        bottleneck detection, defect-risk prediction, and inference at sensor-poor stations.</p>
+      <span class="scope">Tracks deliverable 2 of 3: <b>Working Prototype</b></span>
+    </div>
+    <div style="text-align:right">
+      <p class="eyebrow">Status</p>
+      <p class="mono" style="font-size:13px;color:var(--active);margin:5px 0 0;font-weight:500">
+        Phase 1 in progress
+      </p>
+    </div>
+  </header>
+
+  <section class="board" aria-label="Progress summary">
+    <div class="cell">
+      <span class="k">Phases done</span>
+      <span class="v" id="ph-done">0<small> / 10</small></span>
+      <span class="meter"><i id="ph-meter" style="width:0%"></i></span>
+    </div>
+    <div class="cell">
+      <span class="k">Steps done</span>
+      <span class="v" id="st-done">1<small> / 58</small></span>
+      <span class="meter"><i id="st-meter" style="width:2%"></i></span>
+    </div>
+    <div class="cell now">
+      <span class="k">Current phase</span>
+      <span class="v">Discovery &amp;<br>Requirements Lock</span>
+    </div>
+    <div class="cell">
+      <span class="k">Compliance</span>
+      <span class="v" id="cc-done">0<small> / 26</small></span>
+      <span class="meter"><i id="cc-meter" style="width:0%"></i></span>
+    </div>
+  </section>
+
+  <div class="sec-head">
+    <h2>Build phases</h2>
+    <span class="rule"></span>
+    <span class="eyebrow">Sequential — each gates the next</span>
+  </div>
+
+  <section class="phases">
+
+    <article class="phase" data-status="active">
+      <div class="node">01</div>
+      <div class="card">
+        <div class="card-top"><h3>Discovery &amp; Requirements Lock</h3><span class="pill active">In progress</span></div>
+        <p class="gist">Map every brief requirement to a feature before writing engine code, and fix the citation ledger so no unverified number can enter later.</p>
+        <ul class="steps">
+          <li data-s="done">Requirements matrix — all 7 complexities + 6 solutioning areas traced to a feature and its evidence</li>
+          <li data-s="active">Citation ledger locked; flagged numbers excluded by name</li>
+          <li data-s="pending">Decisions: repo name, licence, "6 of 30–50 stations" framing, Digital&nbsp;Shadow / Predictive-DT positioning</li>
+          <li data-s="pending">Scope-cut list confirmed and recorded</li>
+          <li data-s="pending">Prior-art note on the Accenture patent — what it claims, what we do differently</li>
+          <li data-s="pending">Phase 1 PDF + this tracker published</li>
+        </ul>
+        <p class="out"><b>Outputs</b> <code>docs/REQUIREMENTS.md</code> <code>docs/CITATIONS.md</code> <code>docs/tracker.html</code></p>
+      </div>
+    </article>
+
+    <article class="phase" data-status="pending">
+      <div class="node">02</div>
+      <div class="card">
+        <div class="card-top"><h3>Scaffold</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">Repo, pinned dependencies, CI on two operating systems, and the frozen data contract every later phase codes against.</p>
+        <ul class="steps">
+          <li data-s="pending"><code style="all:unset">git init</code>; pinned <code style="all:unset">pyproject.toml</code>; <code style="all:unset">uv lock</code></li>
+          <li data-s="pending">ML and dev dependency groups isolated from the server import path</li>
+          <li data-s="pending">CI matrix — ubuntu + windows</li>
+          <li data-s="pending">Freeze <code style="all:unset">contracts.py</code>, <code style="all:unset">provenance.py</code>, <code style="all:unset">sources.py</code></li>
+          <li data-s="pending">Fixture generator + contract-conformance test green</li>
+          <li data-s="pending">Phase 2 PDF; first commit (local — no push without sign-off)</li>
+        </ul>
+        <p class="out"><b>Gate</b> 60 valid fixture frames; CI green on both OSes</p>
+      </div>
+    </article>
+
+    <article class="phase" data-status="pending">
+      <div class="node">03</div>
+      <div class="card">
+        <div class="card-top"><h3>Simulation Core</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">The risk gate. Two silent bugs here would invalidate the cascade thesis without raising a single error, so both get dedicated regression tests.</p>
+        <ul class="steps">
+          <li data-s="pending">Parameter grounding — every value carries a source or is stamped uncalibrated</li>
+          <li data-s="pending">Distribution helper + per-station seeded generators</li>
+          <li data-s="pending">Station pattern with <em>both</em> load-bearing guards</li>
+          <li data-s="pending">Six stations; each unit carries an id + per-station event log</li>
+          <li data-s="pending">Cascade and active-period tests — each proven to fail red when its guard is removed</li>
+          <li data-s="pending">Phase 3 PDF with the parameter-provenance table</li>
+        </ul>
+        <p class="out"><b>Gate</b> Removing a guard must turn a test red — otherwise the test is wrong</p>
+      </div>
+    </article>
+
+    <article class="phase" data-status="pending">
+      <div class="node">04</div>
+      <div class="card">
+        <div class="card-top"><h3>Engine &amp; Bottleneck Diagnostic</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">Real-time-paced tick loop, plus a bottleneck detector that stays silent when the evidence is not statistically significant.</p>
+        <ul class="steps">
+          <li data-s="pending">Absolute-deadline anchored loop; fault frames; restart endpoint</li>
+          <li data-s="pending">Active Period Method — momentary rule, runner-up, mode decomposition</li>
+          <li data-s="pending">Significance gate: ANOVA + Tukey–Kramer before naming any bottleneck</li>
+          <li data-s="pending">Operator-facing Bottleneck Walk phrasing</li>
+          <li data-s="pending">Detector test parametrised across all six stations</li>
+          <li data-s="pending">Phase 4 PDF</li>
+        </ul>
+        <p class="out"><b>Gate</b> Names the loaded station; names none of the other five</p>
+      </div>
+    </article>
+
+    <article class="phase" data-status="pending">
+      <div class="node">05</div>
+      <div class="card">
+        <div class="card-top"><h3>Transport</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">Server-sent events for state, plain REST for control — so a judge can verify the stream is real with nothing but a terminal.</p>
+        <ul class="steps">
+          <li data-s="pending">Single-slot conflation bus; a slow client cannot stall the clock</li>
+          <li data-s="pending">Stream, state, control, heartbeat, restart, health endpoints</li>
+          <li data-s="pending">Control queue drained at the top of each tick</li>
+          <li data-s="pending">Verified live with <code style="all:unset">curl -N</code>; malformed payloads rejected</li>
+          <li data-s="pending">Three concurrent clients stay in sync</li>
+          <li data-s="pending">Phase 5 PDF</li>
+        </ul>
+        <p class="out"><b>Gate</b> Monotonic ticks; control applied within one tick</p>
+      </div>
+    </article>
+
+    <article class="phase" data-status="pending">
+      <div class="node">06</div>
+      <div class="card">
+        <div class="card-top"><h3>Floor-Supervisor View</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">The real-time persona. Nothing here counts as done until the change is watched happening in a browser.</p>
+        <ul class="steps">
+          <li data-s="pending">Station cards, status ramp, confidence pills, alert strip on the brand palette</li>
+          <li data-s="pending">Charting library vendored with its licence</li>
+          <li data-s="pending">Perturbation slider wired to the control endpoint</li>
+          <li data-s="pending">Vitals bar driven by real connection state; kill / resume</li>
+          <li data-s="pending">Verified live: drag the slider, bottleneck moves within 2&nbsp;s</li>
+          <li data-s="pending">Phase 6 PDF</li>
+        </ul>
+        <p class="out"><b>Gate</b> Kill the stream — every number freezes and the lamp reddens</p>
+      </div>
+    </article>
+
+    <article class="phase" data-status="pending">
+      <div class="node">07</div>
+      <div class="card">
+        <div class="card-top"><h3>Predictive Layer</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">Two models, seam stated loudly: a public-data benchmark proving the capability is real, and the live scorer running on the twin.</p>
+        <ul class="steps">
+          <li data-s="pending">Label-generating process documented <em>before</em> any metric is computed</li>
+          <li data-s="pending">Benchmark on real public data — including a deliberate failure case</li>
+          <li data-s="pending">Live model: monotone constraints, calibration, held-out line configuration</li>
+          <li data-s="pending">Top-2 drivers surfaced and labelled associative, not causal</li>
+          <li data-s="pending">Single-feature baseline published beside the model, whatever the lift</li>
+          <li data-s="pending">Phase 7 PDF</li>
+        </ul>
+        <p class="out"><b>Gate</b> No config leakage; monotonicity holds across the sweep</p>
+      </div>
+    </article>
+
+    <article class="phase" data-status="pending">
+      <div class="node">08</div>
+      <div class="card">
+        <div class="card-top"><h3>Sensor Gaps, Genealogy &amp; Two More Personas</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">The brief's hardest asks, answered together: staying useful where there are no sensors, and tracing a late-surfacing defect back to its origin.</p>
+        <ul class="steps">
+          <li data-s="pending">Harmonic extension across the line graph; two stations left uninstrumented</li>
+          <li data-s="pending">Observed / inferred / simulated tagging, with confidence and freshness</li>
+          <li data-s="pending">Graceful degradation charted at 100 / 80 / 60 / 40&nbsp;% coverage</li>
+          <li data-s="pending">Defect genealogy — origin station, affected unit range, confidence</li>
+          <li data-s="pending">Plant-manager trend view + leadership investment panel</li>
+          <li data-s="pending">Phase 8 PDF</li>
+        </ul>
+        <p class="out"><b>Gate</b> Two graph identities hold exactly; degradation curve committed</p>
+      </div>
+    </article>
+
+    <article class="phase" data-status="pending">
+      <div class="node">09</div>
+      <div class="card">
+        <div class="card-top"><h3>Docs &amp; Verification</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">The honesty ledger written down in full, and a clean-clone run proving someone else can start it.</p>
+        <ul class="steps">
+          <li data-s="pending">Full suite green; CI green on both operating systems</li>
+          <li data-s="pending">README — quickstart, minimum-signal table, capability ladder with a real test name per row</li>
+          <li data-s="pending">Honesty ledger; integration and scalability sections</li>
+          <li data-s="pending">Data, limitations and interview docs; four architecture decision records</li>
+          <li data-s="pending">Preflight check + clean-clone test</li>
+          <li data-s="pending">Phase 9 PDF</li>
+        </ul>
+        <p class="out"><b>Gate</b> Clean clone → one documented command → working twin</p>
+      </div>
+    </article>
+
+    <article class="phase" data-status="pending">
+      <div class="node">10</div>
+      <div class="card">
+        <div class="card-top"><h3>Deploy &amp; Submission Readiness</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">Falsifiability on camera. The three video beats exist so a judge can rule out a scripted demo without taking anything on trust.</p>
+        <ul class="steps">
+          <li data-s="pending">Hosted deploy at reduced tick rate — or a limitations entry naming exactly why not</li>
+          <li data-s="pending">Repo visibility confirmed before any push</li>
+          <li data-s="pending">Beat 1 — live perturbation to a judge-chosen value, OS clock in frame</li>
+          <li data-s="pending">Beat 2 — browser event stream beside a terminal, identical tick numbers</li>
+          <li data-s="pending">Beat 3 — kill the server on camera; freeze; restart; resume</li>
+          <li data-s="pending">Phase 10 PDF; tracker all-green; tagged release</li>
+        </ul>
+        <p class="out"><b>Gate</b> All three beats recorded; deliverable inputs handed to teammates</p>
+      </div>
+    </article>
+
+  </section>
+
+  <section class="compliance">
+    <div class="sec-head">
+      <h2>End-of-project checklist</h2>
+      <span class="rule"></span>
+      <span class="eyebrow">Verified before submission</span>
+    </div>
+
+    <div class="cgrid">
+
+      <div class="cblock">
+        <h3>A &middot; Deliverable coverage</h3>
+        <p class="why">What Round 2 actually asked for.</p>
+        <ul>
+          <li data-s="pending">Runs from a clean clone with one documented command</li>
+          <li data-s="pending">Demonstrates the core predictive mechanism live, not a scripted playback</li>
+          <li data-s="pending">Runs on illustrative data, and says so plainly</li>
+          <li data-s="pending">Business Proposal inputs handed over — roadmap, risks, ROI, target users</li>
+          <li data-s="pending">Pitch assets handed over — video, screenshots, run steps</li>
+        </ul>
+      </div>
+
+      <div class="cblock">
+        <h3>B &middot; Every complexity answered</h3>
+        <p class="why">Each one locatable in the running system, not just the README.</p>
+        <ul>
+          <li data-s="pending">Uneven sensor coverage → inference + degradation curve</li>
+          <li data-s="pending">Multi-causal root causes → drivers labelled associative, not causal</li>
+          <li data-s="pending">Legacy PLC / OT → read-only tap, never in the control path</li>
+          <li data-s="pending">Late-surfacing defects → genealogy with transfer-delay realignment</li>
+          <li data-s="pending">Three personas → three views over one model</li>
+          <li data-s="pending">Scaling across sites → config only, no new code</li>
+          <li data-s="pending">False alarms erode trust → significance gate + calibration</li>
+        </ul>
+      </div>
+
+      <div class="cblock">
+        <h3>C &middot; Nothing overstated</h3>
+        <p class="why">The discipline that makes the rest of it credible.</p>
+        <ul>
+          <li data-s="pending">Every metric names the unseen configuration it was evaluated on</li>
+          <li data-s="pending">Thresholded metrics always printed with their threshold</li>
+          <li data-s="pending">Baseline published beside the model, whatever the lift</li>
+          <li data-s="pending">Measured values distinguished from model-computed ones</li>
+          <li data-s="pending">Positioned honestly — no standards-compliance or millisecond-fidelity claims</li>
+          <li data-s="pending">No flagged third-party figure repeated as our own or as verified</li>
+          <li data-s="pending">Patent cited as <em>claims</em>, never <em>demonstrates</em></li>
+          <li data-s="pending">Synthetic parameters labelled; calibrated ones carry a source</li>
+        </ul>
+      </div>
+
+      <div class="cblock">
+        <h3>D &middot; Verification</h3>
+        <p class="why">Claims that a reviewer can re-run themselves.</p>
+        <ul>
+          <li data-s="pending">Twenty or more tests green; CI green on both operating systems</li>
+          <li data-s="pending">Both silent-bug regressions fail red when their guard is removed</li>
+          <li data-s="pending">Same seed reproduces exactly; a different seed diverges</li>
+          <li data-s="pending">Analytics path runs with the simulation library unimported</li>
+          <li data-s="pending">Fresh-machine clean-clone test passed by someone else</li>
+          <li data-s="pending">All three falsifiability beats recorded</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <footer>
+    <span>Working Prototype · deliverable 2 of 3 · Business Proposal and Pitch are teammate-owned</span>
+    <span class="mono" id="stamp"></span>
+  </footer>
+
+</div>
+
+<script>
+  // Counts derive from the DOM so the numbers can never drift from the checkboxes.
+  (function () {
+    var phases = document.querySelectorAll('.phase');
+    var phDone = document.querySelectorAll('.phase[data-status="done"]').length;
+
+    var allSteps  = document.querySelectorAll('.steps li');
+    var stepsDone = document.querySelectorAll('.steps li[data-s="done"]').length;
+
+    var allCc  = document.querySelectorAll('.cblock li');
+    var ccDone = document.querySelectorAll('.cblock li[data-s="done"]').length;
+
+    function set(idVal, idMeter, done, total) {
+      document.getElementById(idVal).innerHTML = done + '<small> / ' + total + '</small>';
+      document.getElementById(idMeter).style.width =
+        (total ? Math.round((done / total) * 100) : 0) + '%';
+    }
+
+    set('ph-done', 'ph-meter', phDone, phases.length);
+    set('st-done', 'st-meter', stepsDone, allSteps.length);
+    set('cc-done', 'cc-meter', ccDone, allCc.length);
+
+    document.getElementById('stamp').textContent =
+      'updated ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + 'Z';
+  })();
+</script>

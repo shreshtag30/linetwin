@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+uv.lock.tmp
+*.pdf.tmp
+.DS_Store
+node_modules/

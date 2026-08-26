@@ -1,0 +1,75 @@
+[project]
+name = "linetwin"
+version = "0.1.0"
+description = "A live discrete-event digital twin of a vehicle assembly line: bottleneck detection, defect-risk prediction, and inference at sensor-poor stations."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.12,<3.13"
+
+# ---------------------------------------------------------------------------
+# Runtime dependencies. This is the ONLY set the server imports.
+#
+# `pandas` is deliberately absent so that pandas 3.0's copy-on-write and
+# string-dtype changes cannot touch the demo path. It lives in the `ml` group
+# below, which the server package must never import from.
+# ---------------------------------------------------------------------------
+dependencies = [
+    "simpy==4.1.2",
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.52.4",
+    "pydantic==2.13.4",
+    "numpy==2.5.2",
+    "scikit-learn==1.9.0",
+    "xgboost==3.4.1",
+    # Explicit, not transitive: Phase 5's ANOVA + Tukey-Kramer significance
+    # layer needs scipy.stats. scikit-learn happens to pull scipy today, but a
+    # transitive dependency is not a contract.
+    "scipy>=1.14",
+    "pyyaml>=6.0",
+    "typer>=0.15",
+    # NOTE: sse-starlette is deliberately ABSENT. The Phase 2 spike established
+    # that fastapi.sse (built in since 0.135.0) covers our needs, so the extra
+    # dependency was dropped rather than carried dead. See docs/adr/ADR-002.
+]
+
+[project.optional-dependencies]
+# Offline ML benchmark (Model A) only. NEVER imported by src/twin/.
+# Enforced by tests/test_server_import_hygiene.py.
+ml = [
+    "pandas>=2.2",
+    "ucimlrepo>=0.0.7",
+    "matplotlib>=3.10",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "hypothesis>=6.115",
+    "httpx>=0.28",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/twin"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["error::DeprecationWarning:twin.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "tools", "ml"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# dists.py is the one sanctioned caller of rng.lognormal (see ADR-001).
+"src/twin/sim/dists.py" = ["RUF100"]
