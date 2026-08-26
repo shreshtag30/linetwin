@@ -24,7 +24,7 @@ def _make_station(env: simpy.Environment, **kwargs: object) -> Station:
         Zone.BODY,
         in_buf=simpy.Store(env, capacity=1),
         out_buf=None,
-        cycle_time_sampler=lambda: 1.0,
+        cycle_time_sampler=lambda _part: 1.0,
         instrumented=True,
         auto_start=False,
         **kwargs,

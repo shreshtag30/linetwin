@@ -133,6 +133,55 @@ this count, not additional to it).
 
 ---
 
+## Addendum: a real bug and a design gap, both found during Phase 4 groundwork
+
+Before formalizing Phase 4's sensitivity harness, a quick probe perturbed each station's cycle time
+by ±15% and measured the effect on line throughput. Every non-bottleneck station showed **exactly
+`+0.000`** change — not "small," exactly zero, at every station tried. That result was suspicious
+enough to chase rather than accept, and it led to two real problems in already-committed Phase 3 code.
+
+**1. The variant multiplier was computed but never applied — a genuine bug.** `Station.run()` called
+`self.cycle_time_sampler()` with zero arguments. The `part` object, which carried `variant_multiplier`,
+was never passed in. The line's "mixed-model" behavior — the entire premise of assigning sedan/SUV/
+hatchback variants per unit — had no effect on simulated cycle times whatsoever from the moment
+`line.py` was first written. **Fixed**: `cycle_time_sampler` now takes the part as an argument, and
+`Station.run()` passes it through.
+
+**2. Even fixed, a single global scalar per variant cannot change which station is the bottleneck —
+a design gap, not a bug.** A uniform multiplier scales every station identically, which preserves
+relative ranking by construction. Phase 4's requirement to produce "a labelled shifting-bottleneck
+trace" by sweeping variant mix would have been unsatisfiable no matter how the harness was written,
+because the scenario itself could never produce a shift. **Fixed**: variant multipliers are now
+per-zone (`variant_zone_multiplier[variant][zone]`), so an SUV-heavy mix can stress final assembly
+specifically, independent of body and paint.
+
+**3. Even with per-zone multipliers, the configured bottleneck was still an insurmountable ceiling —
+a tuning problem, verified rather than assumed fixed.** At `bottleneck_multiplier=1.3` and
+`suv.final=1.35`, a 100%-SUV mix still only reached 74.2s at a final-assembly station against S17's
+89.6s — never closing the gap. Retuned to `bottleneck_multiplier=1.15` and `suv.final=1.55`; rechecked
+the arithmetic (100% SUV: final 85.2s vs. S17 79.2s — now crosses), then **verified end-to-end in an
+actual simulation run**, not just in the static numbers: under the normal mix S17 leads
+(19,138s active vs. S13's 18,438s); under a heavy-SUV mix (90%), S19 genuinely overtakes S17
+(18,777s vs. 18,656s). A new regression test, `test_variant_mix_can_genuinely_shift_the_bottleneck`,
+pins both directions so this capability cannot silently regress.
+
+**4. Writing that test surfaced a third variant of the pipeline-transient trap.** The first version of
+the test used the module's usual 6000s duration and found `S01` — the very first station — "winning"
+the active-time comparison under the normal mix, not S17. This is a different failure mode from the
+two already documented in this phase (which were both about flow not having *arrived* yet): here, flow
+had reached every station, but comparing cumulative active time over a short fixed window is itself
+biased toward upstream stations, because they accumulate WORKING time from t=0 while downstream
+stations lose early time to STARVED periods during pipeline fill. Verified empirically that the bias
+washes out by 20,000s and fixed the test to use that duration for this specific comparison, with the
+reasoning documented inline so it isn't rediscovered a fourth time.
+
+**Net effect:** the line now has a genuinely functioning mixed-model capability, a bottleneck that is
+dominant under normal conditions but not un-challengeable, and one more addition to this project's
+running list of "duration matters more than it looks like it should" traps. All 37 tests green
+(one more than the 36 reported above — the new shifting-bottleneck regression test).
+
+---
+
 ## Next
 
 **Phase 4 — Ground Truth by Sensitivity Analysis.** Perturb each station's cycle-time mean by ±δ,

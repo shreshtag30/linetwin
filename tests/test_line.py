@@ -86,6 +86,71 @@ def test_event_log_entries_conform_to_the_frozen_contract() -> None:
         assert event.station_id in line.stations
 
 
+def test_variant_mix_can_genuinely_shift_the_bottleneck() -> None:
+    """Load-bearing property for Phase 4: a heavy-SUV mix must be able to make
+    a final-assembly station overtake S17 as the most-active station, and the
+    normal mix must leave S17 dominant. This was NOT true of an earlier
+    version of this scenario/line.py: the variant multiplier was computed but
+    never actually passed to the cycle-time sampler, and even once wired up, a
+    single global scalar per variant could never change relative station
+    ranking (uniform scaling preserves order). Both are fixed; this test
+    exists so neither regresses silently.
+
+    A THIRD variant of the pipeline-transient trap was found writing this
+    specific test, distinct from the first two documented above: at the
+    module's usual DURATION_S (6000s), comparing raw cumulative active time
+    across stations is itself biased toward upstream stations, because S01
+    accumulates WORKING time from t=0 while downstream stations lose time to
+    STARVED periods during pipeline fill -- so S01 "wins" the comparison
+    despite never being the configured bottleneck. This is a different failure
+    mode from "flow hasn't arrived yet" (zero completions): here flow HAS
+    arrived everywhere, but the comparison itself is still skewed by the
+    startup transient. Verified empirically that the bias washes out by
+    20,000s; a shorter window with a discarded warm-up period would also work,
+    but the longer window is simpler and this test is not on any hot path.
+    """
+    from twin.contracts import StationState
+
+    ranking_duration = 20_000.0
+
+    active_states = {
+        StationState.WORKING,
+        StationState.DOWN,
+        StationState.REPAIR,
+        StationState.SETUP,
+    }
+
+    def most_active_station(weights: dict[str, float]) -> str:
+        config = LineConfig.from_yaml(SCENARIO)
+        for v in config.variants:
+            v["weight"] = weights[v["id"]]
+        env = simpy.Environment()
+        from twin.sim.line import Line
+
+        line = Line(env, config)
+        env.run(until=ranking_duration)
+        for station in line.stations.values():
+            station.finalize_active_period()
+        totals = {
+            sid: sum(v for k, v in st.time_in_state.items() if k in active_states)
+            for sid, st in line.stations.items()
+        }
+        return max(totals, key=lambda sid: totals[sid])
+
+    normal_mix = most_active_station({"sedan": 0.5, "suv": 0.3, "hatchback": 0.2})
+    heavy_suv_mix = most_active_station({"sedan": 0.05, "suv": 0.90, "hatchback": 0.05})
+
+    assert normal_mix == "S17", "under the configured baseline mix, S17 must remain the bottleneck"
+    assert heavy_suv_mix != "S17", (
+        "under a heavy-SUV mix, some other (final-assembly) station must overtake "
+        "S17 -- if it never does, bottleneck shifting is not actually achievable "
+        "with this scenario's numbers"
+    )
+    assert heavy_suv_mix.startswith("S") and 19 <= int(heavy_suv_mix[1:]) <= 30, (
+        f"expected the new bottleneck to be a final-assembly station, got {heavy_suv_mix}"
+    )
+
+
 def test_same_seed_reproduces_identical_event_log_different_seed_diverges() -> None:
     def run_with(scenario_path: Path, seed_override: int | None) -> list[float]:
         config = LineConfig.from_yaml(scenario_path)

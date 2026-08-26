@@ -49,7 +49,7 @@ class Station:
         zone: Zone,
         in_buf: simpy.Store,
         out_buf: simpy.Store | None,
-        cycle_time_sampler: Callable[[], float],
+        cycle_time_sampler: Callable[[object], float],
         instrumented: bool,
         *,
         auto_start: bool = True,
@@ -158,7 +158,7 @@ class Station:
             entered_at = self.env.now
 
             self._set_state(StationState.WORKING)
-            cycle_time = self.cycle_time_sampler()
+            cycle_time = self.cycle_time_sampler(part)
             self.last_cycle_time_s = cycle_time
             yield self.env.timeout(cycle_time)
             self.units_completed += 1

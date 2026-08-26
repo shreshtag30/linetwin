@@ -36,7 +36,6 @@ from twin.sim.station import Station
 class _Part:
     unit_id: int
     variant: str
-    variant_multiplier: float
 
 
 @dataclass
@@ -52,6 +51,11 @@ class LineConfig:
     bottleneck_station_id: str
     bottleneck_multiplier: float
     variants: list[dict[str, Any]]
+    # variant_id -> zone -> multiplier. Per-zone, not a single scalar per
+    # variant: a uniform scalar would scale every station identically and
+    # could never change WHICH station is the bottleneck, which would make
+    # Phase 4's shifting-bottleneck requirement unsatisfiable by construction.
+    variant_zone_multiplier: dict[str, dict[Zone, float]]
 
     @classmethod
     def from_yaml(cls, path: Path | str) -> LineConfig:
@@ -77,6 +81,12 @@ class LineConfig:
 
         station_ids.sort(key=lambda s: int(s[1:]))
 
+        variant_zone_multiplier: dict[str, dict[Zone, float]] = {}
+        for v in raw["variants"]:
+            variant_zone_multiplier[v["id"]] = {
+                Zone(zname): float(mult) for zname, mult in v["zone_multipliers"].items()
+            }
+
         return cls(
             name=raw["name"],
             seed=int(raw["seed"]),
@@ -89,6 +99,7 @@ class LineConfig:
             bottleneck_station_id=raw["bottleneck"]["station_id"],
             bottleneck_multiplier=float(raw["bottleneck"]["cycle_time_multiplier"]),
             variants=raw["variants"],
+            variant_zone_multiplier=variant_zone_multiplier,
         )
 
     @property
@@ -130,12 +141,16 @@ class Line:
             rng = self._rngs[sid]
 
             def sampler(
+                part: object,
                 _rng: np.random.Generator = rng,
                 _mean: float = base_cycle,
                 _cv: float = cv,
                 _mult: float = multiplier,
+                _zone: Zone = zone,
             ) -> float:
-                return sample_cycle_time(_rng, _mean * _mult, _cv)
+                assert isinstance(part, _Part)
+                variant_mult = self.config.variant_zone_multiplier[part.variant][_zone]
+                return sample_cycle_time(_rng, _mean * _mult * variant_mult, _cv)
 
             def make_on_departure(_sid: str, _zone: Zone):
                 def _on_departure(
@@ -173,12 +188,11 @@ class Line:
         self._source_buf = buffers[config.station_ids[0]]
         self._source_process = env.process(self._source())
 
-    def _pick_variant(self) -> tuple[str, float]:
+    def _pick_variant(self) -> str:
         weights = np.array([v["weight"] for v in self.config.variants], dtype=float)
         weights /= weights.sum()
         idx = self._variant_rng.choice(len(self.config.variants), p=weights)
-        chosen = self.config.variants[idx]
-        return chosen["id"], float(chosen["cycle_time_multiplier"])
+        return str(self.config.variants[idx]["id"])
 
     def _source(self):
         """Feeds units into the first station's buffer as fast as it accepts
@@ -186,8 +200,8 @@ class Line:
         station cycle times are.
         """
         while True:
-            variant, mult = self._pick_variant()
-            part = _Part(unit_id=self._next_unit_id, variant=variant, variant_multiplier=mult)
+            variant = self._pick_variant()
+            part = _Part(unit_id=self._next_unit_id, variant=variant)
             self._next_unit_id += 1
             yield self._source_buf.put(part)
 

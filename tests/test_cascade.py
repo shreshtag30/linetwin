@@ -42,16 +42,16 @@ def _build_chain(
 
     station_a = Station(
         env, "A", Zone.BODY, in_buf=simpy.Store(env, capacity=10_000), out_buf=buf_ab,
-        cycle_time_sampler=lambda: NORMAL_CYCLE, instrumented=True,
+        cycle_time_sampler=lambda _part: NORMAL_CYCLE, instrumented=True,
     )
     station_b = Station(
         env, "B", Zone.BODY, in_buf=buf_ab, out_buf=buf_bc,
-        cycle_time_sampler=lambda: NORMAL_CYCLE, instrumented=True,
+        cycle_time_sampler=lambda _part: NORMAL_CYCLE, instrumented=True,
         _unsafe_fire_and_forget_put=unsafe_fire_and_forget_middle,
     )
     station_c = Station(
         env, "C", Zone.BODY, in_buf=buf_bc, out_buf=sink,
-        cycle_time_sampler=lambda: NORMAL_CYCLE * SLOW_MULTIPLIER, instrumented=True,
+        cycle_time_sampler=lambda _part: NORMAL_CYCLE * SLOW_MULTIPLIER, instrumented=True,
     )
 
     # Keep A permanently fed so it is never the constraint.
@@ -139,7 +139,7 @@ def test_determinism_same_seed_identical_different_seed_differs(seed: int) -> No
         env = simpy.Environment()
         sampled: list[float] = []
 
-        def sampler() -> float:
+        def sampler(_part: object) -> float:
             value = float(rng.lognormal(3.0, 0.2))
             sampled.append(value)
             return value
