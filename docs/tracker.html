@@ -140,7 +140,7 @@
     color: var(--ink-mid);
     font-size: 14px;
     margin-top: 7px;
-    max-width: 60ch;
+    max-width: 62ch;
   }
 
   .scope {
@@ -200,7 +200,7 @@
     color: var(--ink-soft);
   }
 
-  .cell.now .v { color: var(--active); font-size: 19px; }
+  .cell.now .v { color: var(--active); font-size: 17px; }
 
   .meter {
     height: 5px;
@@ -244,7 +244,6 @@
     position: relative;
   }
 
-  /* the connecting line: phases are a genuine dependency sequence */
   .phase::before {
     content: "";
     position: absolute;
@@ -328,7 +327,7 @@
     color: var(--ink-mid);
     font-size: 13.5px;
     margin: 2px 0 12px;
-    max-width: 78ch;
+    max-width: 80ch;
   }
 
   .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -359,7 +358,6 @@
   .steps li[data-s="done"]::before {
     background: var(--done);
     border-color: var(--done);
-    /* checkmark */
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.5 6.3 4.7 8.5 9.5 3.7' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
     background-size: 11px 11px;
     background-position: center;
@@ -478,14 +476,15 @@
     <div>
       <p class="eyebrow">Accenture Innovation Challenge 2026 &middot; Round 2 &middot; Track 4</p>
       <h1>LineTwin Build Tracker</h1>
-      <p class="sub">Ten-phase build of a live discrete-event digital twin for a vehicle assembly line —
-        bottleneck detection, defect-risk prediction, and inference at sensor-poor stations.</p>
+      <p class="sub">Ten-phase build of a live discrete-event digital twin for a 30-station,
+        three-zone vehicle assembly line — bottleneck detection validated against our own
+        ground truth, defect-risk prediction, and inference at sensor-poor stations.</p>
       <span class="scope">Tracks deliverable 2 of 3: <b>Working Prototype</b></span>
     </div>
     <div style="text-align:right">
       <p class="eyebrow">Status</p>
       <p class="mono" style="font-size:13px;color:var(--active);margin:5px 0 0;font-weight:500">
-        Phase 1 in progress
+        Phase 3 in progress
       </p>
     </div>
   </header>
@@ -493,17 +492,17 @@
   <section class="board" aria-label="Progress summary">
     <div class="cell">
       <span class="k">Phases done</span>
-      <span class="v" id="ph-done">0<small> / 10</small></span>
-      <span class="meter"><i id="ph-meter" style="width:0%"></i></span>
+      <span class="v" id="ph-done">2<small> / 10</small></span>
+      <span class="meter"><i id="ph-meter" style="width:20%"></i></span>
     </div>
     <div class="cell">
       <span class="k">Steps done</span>
-      <span class="v" id="st-done">1<small> / 58</small></span>
-      <span class="meter"><i id="st-meter" style="width:2%"></i></span>
+      <span class="v" id="st-done">14<small> / 68</small></span>
+      <span class="meter"><i id="st-meter" style="width:21%"></i></span>
     </div>
     <div class="cell now">
       <span class="k">Current phase</span>
-      <span class="v">Discovery &amp;<br>Requirements Lock</span>
+      <span class="v">Simulation Core</span>
     </div>
     <div class="cell">
       <span class="k">Compliance</span>
@@ -520,173 +519,181 @@
 
   <section class="phases">
 
-    <article class="phase" data-status="active">
+    <article class="phase" data-status="done">
       <div class="node">01</div>
       <div class="card">
-        <div class="card-top"><h3>Discovery &amp; Requirements Lock</h3><span class="pill active">In progress</span></div>
-        <p class="gist">Map every brief requirement to a feature before writing engine code, and fix the citation ledger so no unverified number can enter later.</p>
+        <div class="card-top"><h3>Discovery &amp; Requirements Lock</h3><span class="pill done">Done</span></div>
+        <p class="gist">Every brief requirement mapped to a feature before any engine code, and the citation ledger fixed so no unverified number can enter the project later.</p>
         <ul class="steps">
           <li data-s="done">Requirements matrix — all 7 complexities + 6 solutioning areas traced to a feature and its evidence</li>
-          <li data-s="active">Citation ledger locked; flagged numbers excluded by name</li>
-          <li data-s="pending">Decisions: repo name, licence, "6 of 30–50 stations" framing, Digital&nbsp;Shadow / Predictive-DT positioning</li>
-          <li data-s="pending">Scope-cut list confirmed and recorded</li>
-          <li data-s="pending">Prior-art note on the Accenture patent — what it claims, what we do differently</li>
-          <li data-s="pending">Phase 1 PDF + this tracker published</li>
+          <li data-s="done">Citation ledger locked; 13 figures individually named and excluded</li>
+          <li data-s="done">Decisions: repo name, licence, station-count framing, positioning</li>
+          <li data-s="done">Scope-cut list confirmed and recorded</li>
+          <li data-s="done">Prior-art note on the Accenture patent — what it claims, what we do differently</li>
+          <li data-s="done">Phase 1 record + PDF + tracker created</li>
         </ul>
-        <p class="out"><b>Outputs</b> <code>docs/REQUIREMENTS.md</code> <code>docs/CITATIONS.md</code> <code>docs/tracker.html</code></p>
+        <p class="out"><b>Outputs</b> <code>docs/REQUIREMENTS.md</code> <code>docs/CITATIONS.md</code> <code>docs/DECISIONS.md</code> <code>docs/PRIOR_ART.md</code></p>
       </div>
     </article>
 
-    <article class="phase" data-status="pending">
+    <article class="phase" data-status="done">
       <div class="node">02</div>
       <div class="card">
-        <div class="card-top"><h3>Scaffold</h3><span class="pill pending">Pending</span></div>
-        <p class="gist">Repo, pinned dependencies, CI on two operating systems, and the frozen data contract every later phase codes against.</p>
+        <div class="card-top"><h3>Foundations &amp; Contracts</h3><span class="pill done">Done</span></div>
+        <p class="gist">Every inherited assumption converted into a verified fact before it could cost time later — dependency pins, the PDF toolchain, and the SSE mechanism were each spiked or checked rather than trusted.</p>
         <ul class="steps">
-          <li data-s="pending"><code style="all:unset">git init</code>; pinned <code style="all:unset">pyproject.toml</code>; <code style="all:unset">uv lock</code></li>
-          <li data-s="pending">ML and dev dependency groups isolated from the server import path</li>
-          <li data-s="pending">CI matrix — ubuntu + windows</li>
-          <li data-s="pending">Freeze <code style="all:unset">contracts.py</code>, <code style="all:unset">provenance.py</code>, <code style="all:unset">sources.py</code></li>
-          <li data-s="pending">Fixture generator + contract-conformance test green</li>
-          <li data-s="pending">Phase 2 PDF; first commit (local — no push without sign-off)</li>
+          <li data-s="done">SSE spike before pinning deps — found two non-obvious failure modes, decided <code style="all:unset">fastapi.sse</code> over <code style="all:unset">sse-starlette</code></li>
+          <li data-s="done">Pinned <code style="all:unset">pyproject.toml</code>; all 8 pins re-verified against the PyPI JSON API after the first check method proved broken</li>
+          <li data-s="done"><code style="all:unset">uv sync --all-extras</code> resolves cleanly — the dependency gate</li>
+          <li data-s="done">Froze <code style="all:unset">contracts.py</code> — snapshot schema, tick geometry, and the <code style="all:unset">UnitEvent</code> log Phase 9 will consume</li>
+          <li data-s="done"><code style="all:unset">provenance.py</code> + <code style="all:unset">sources.py</code> (<code style="all:unset">TelemetrySource</code> ABC, read-only by construction)</li>
+          <li data-s="done">Generated 60-tick/30-station fixture; contract + source-agnosticism tests green; CI authored</li>
         </ul>
-        <p class="out"><b>Gate</b> 60 valid fixture frames; CI green on both OSes</p>
+        <p class="out"><b>Gate met</b> 12/12 tests green · ruff clean · dependency graph resolved · <code style="all:unset">git init</code> + first commit, local only</p>
       </div>
     </article>
 
-    <article class="phase" data-status="pending">
+    <article class="phase" data-status="active">
       <div class="node">03</div>
       <div class="card">
-        <div class="card-top"><h3>Simulation Core</h3><span class="pill pending">Pending</span></div>
-        <p class="gist">The risk gate. Two silent bugs here would invalidate the cascade thesis without raising a single error, so both get dedicated regression tests.</p>
+        <div class="card-top"><h3>Simulation Core</h3><span class="pill active">In progress</span></div>
+        <p class="gist">The risk gate. Two silent bugs here would invalidate the cascade thesis without raising a single error, so both get a dedicated regression test proven to fail red when its guard is removed.</p>
         <ul class="steps">
-          <li data-s="pending">Parameter grounding — every value carries a source or is stamped uncalibrated</li>
-          <li data-s="pending">Distribution helper + per-station seeded generators</li>
+          <li data-s="pending">Parameter grounding — cycle times and CVs from Future Factories V2 / PyScrew, or stamped uncalibrated</li>
+          <li data-s="pending">Distribution helper — sole caller of <code style="all:unset">rng.lognormal</code></li>
+          <li data-s="pending">Per-station seeded generators (one <code style="all:unset">SeedSequence</code>, one PCG64 child each)</li>
           <li data-s="pending">Station pattern with <em>both</em> load-bearing guards</li>
-          <li data-s="pending">Six stations; each unit carries an id + per-station event log</li>
+          <li data-s="pending">30 stations, 3 zones, mixed-model; per-unit event log against the frozen schema</li>
           <li data-s="pending">Cascade and active-period tests — each proven to fail red when its guard is removed</li>
-          <li data-s="pending">Phase 3 PDF with the parameter-provenance table</li>
+          <li data-s="pending">Phase 3 record + PDF, with the parameter-provenance table</li>
         </ul>
-        <p class="out"><b>Gate</b> Removing a guard must turn a test red — otherwise the test is wrong</p>
+        <p class="out"><b>Gate</b> Removing a guard must turn its test red — otherwise the test is wrong</p>
       </div>
     </article>
 
     <article class="phase" data-status="pending">
       <div class="node">04</div>
       <div class="card">
-        <div class="card-top"><h3>Engine &amp; Bottleneck Diagnostic</h3><span class="pill pending">Pending</span></div>
-        <p class="gist">Real-time-paced tick loop, plus a bottleneck detector that stays silent when the evidence is not statistically significant.</p>
+        <div class="card-top"><h3>Ground Truth by Sensitivity Analysis</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">Possible only because we own the simulator — computing a true bottleneck by perturbation rather than citing someone else's. The foundation the detector benchmark stands on.</p>
         <ul class="steps">
-          <li data-s="pending">Absolute-deadline anchored loop; fault frames; restart endpoint</li>
-          <li data-s="pending">Active Period Method — momentary rule, runner-up, mode decomposition</li>
-          <li data-s="pending">Significance gate: ANOVA + Tukey–Kramer before naming any bottleneck</li>
-          <li data-s="pending">Operator-facing Bottleneck Walk phrasing</li>
-          <li data-s="pending">Detector test parametrised across all six stations</li>
-          <li data-s="pending">Phase 4 PDF</li>
+          <li data-s="pending">Sensitivity harness — perturb each station's cycle time, measure throughput response</li>
+          <li data-s="pending">Common Random Numbers via per-station PCG64 — paired comparisons, not independent runs</li>
+          <li data-s="pending">Ground truth defined as largest |&Delta;throughput / &Delta;cycle_time|</li>
+          <li data-s="pending">Replication + bootstrap confidence intervals per station</li>
+          <li data-s="pending">Variant-mix sweep producing a labelled shifting-bottleneck trace</li>
+          <li data-s="pending"><code style="all:unset">ground_truth.csv</code> committed, reproducible from one command</li>
+          <li data-s="pending">Phase 4 record + PDF</li>
         </ul>
-        <p class="out"><b>Gate</b> Names the loaded station; names none of the other five</p>
+        <p class="out"><b>Gate</b> Ground truth stable under re-seeding; CIs narrow enough to discriminate the top-2 stations</p>
       </div>
     </article>
 
     <article class="phase" data-status="pending">
       <div class="node">05</div>
       <div class="card">
-        <div class="card-top"><h3>Transport</h3><span class="pill pending">Pending</span></div>
-        <p class="gist">Server-sent events for state, plain REST for control — so a judge can verify the stream is real with nothing but a terminal.</p>
+        <div class="card-top"><h3>Detector Benchmark</h3><span class="pill pending">Pending</span><span class="pill" style="background:var(--accent-soft);color:var(--accent)">Headline result</span></div>
+        <p class="gist">Six bottleneck detectors scored against ground truth no prior paper had access to — settling a real disagreement in the literature empirically instead of citing one side of it.</p>
         <ul class="steps">
-          <li data-s="pending">Single-slot conflation bus; a slow client cannot stall the clock</li>
-          <li data-s="pending">Stream, state, control, heartbeat, restart, health endpoints</li>
-          <li data-s="pending">Control queue drained at the top of each tick</li>
-          <li data-s="pending">Verified live with <code style="all:unset">curl -N</code>; malformed payloads rejected</li>
-          <li data-s="pending">Three concurrent clients stay in sync</li>
-          <li data-s="pending">Phase 5 PDF</li>
+          <li data-s="pending">Implement six detectors behind one interface — Active Period, Busy Ratio, Arrow, Turning Point, Queue Length, Utilization</li>
+          <li data-s="pending">Score all six against Phase 4 ground truth — MSE, top-1/top-3 accuracy, detection latency</li>
+          <li data-s="pending">Significance layer — ANOVA + Tukey&ndash;Kramer over active-period samples</li>
+          <li data-s="pending">Measure the latency/confidence tradeoff across window sizes; ship as an annotation, not a suppression rule</li>
+          <li data-s="pending">Mode decomposition + Bottleneck Walk operator phrasing</li>
+          <li data-s="pending"><code style="all:unset">detector_comparison.csv</code>; detector test parametrised across all 30 stations</li>
+          <li data-s="pending">Phase 5 record + PDF</li>
         </ul>
-        <p class="out"><b>Gate</b> Monotonic ticks; control applied within one tick</p>
+        <p class="out"><b>Gate</b> Result published whatever it shows — if another detector wins on our line, we switch</p>
       </div>
     </article>
 
     <article class="phase" data-status="pending">
       <div class="node">06</div>
       <div class="card">
-        <div class="card-top"><h3>Floor-Supervisor View</h3><span class="pill pending">Pending</span></div>
-        <p class="gist">The real-time persona. Nothing here counts as done until the change is watched happening in a browser.</p>
+        <div class="card-top"><h3>Engine &amp; Transport</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">Real-time-paced tick loop over a single-slot conflation bus, so a slow client can never stall the simulation clock.</p>
         <ul class="steps">
-          <li data-s="pending">Station cards, status ramp, confidence pills, alert strip on the brand palette</li>
-          <li data-s="pending">Charting library vendored with its licence</li>
-          <li data-s="pending">Perturbation slider wired to the control endpoint</li>
-          <li data-s="pending">Vitals bar driven by real connection state; kill / resume</li>
-          <li data-s="pending">Verified live: drag the slider, bottleneck moves within 2&nbsp;s</li>
-          <li data-s="pending">Phase 6 PDF</li>
+          <li data-s="pending">Plain <code style="all:unset">simpy.Environment</code>, absolute-deadline anchored sleep, re-anchoring past 5 ticks of lag</li>
+          <li data-s="pending">Never <code style="all:unset">env.peek()</code>/<code style="all:unset">env.step()</code> — the URGENT sentinel keeps <code style="all:unset">env.now</code> exact</li>
+          <li data-s="pending">Single-slot conflation bus; SSE generators emit only on <code style="all:unset">seq</code> change</li>
+          <li data-s="pending">Stream / state / control / heartbeat / restart / health routes; control queue drained at tick top</li>
+          <li data-s="pending">Full snapshot per tick, no deltas; fault frames on engine error</li>
+          <li data-s="pending"><code style="all:unset">curl -N</code> verified live; malformed payloads rejected; 3 concurrent clients stay in sync</li>
+          <li data-s="pending">Phase 6 record + PDF</li>
         </ul>
-        <p class="out"><b>Gate</b> Kill the stream — every number freezes and the lamp reddens</p>
+        <p class="out"><b>Gate</b> <code style="all:unset">sim_time_s == tick*SIM_DT</code> exactly; real-time factor 1.00 &plusmn; 0.05</p>
       </div>
     </article>
 
     <article class="phase" data-status="pending">
       <div class="node">07</div>
       <div class="card">
-        <div class="card-top"><h3>Predictive Layer</h3><span class="pill pending">Pending</span></div>
-        <p class="gist">Two models, seam stated loudly: a public-data benchmark proving the capability is real, and the live scorer running on the twin.</p>
+        <div class="card-top"><h3>Floor-Supervisor View</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">The real-time persona, and the first of three. Nothing here counts as done until the change is watched happening in a browser.</p>
         <ul class="steps">
-          <li data-s="pending">Label-generating process documented <em>before</em> any metric is computed</li>
-          <li data-s="pending">Benchmark on real public data — including a deliberate failure case</li>
-          <li data-s="pending">Live model: monotone constraints, calibration, held-out line configuration</li>
-          <li data-s="pending">Top-2 drivers surfaced and labelled associative, not causal</li>
-          <li data-s="pending">Single-feature baseline published beside the model, whatever the lift</li>
-          <li data-s="pending">Phase 7 PDF</li>
+          <li data-s="pending">Zone-grouped station grid on the Accenture palette — 30 stations need different information design than 6</li>
+          <li data-s="pending">Bottleneck callout carrying mode decomposition and the Phase 5 confidence annotation</li>
+          <li data-s="pending">Vendored uPlot with its MIT licence; throughput and queue-depth charts</li>
+          <li data-s="pending">Vitals bar off real <code style="all:unset">EventSource.readyState</code>; kill/resume</li>
+          <li data-s="pending">Verified live: drag the slider, bottleneck moves within 2&nbsp;s</li>
+          <li data-s="pending">Latency asserted in a test, not eyeballed; stream smoke test</li>
+          <li data-s="pending">Phase 7 record + PDF</li>
         </ul>
-        <p class="out"><b>Gate</b> No config leakage; monotonicity holds across the sweep</p>
+        <p class="out"><b>Gate</b> Kill the stream — every number freezes and the lamp reddens</p>
       </div>
     </article>
 
     <article class="phase" data-status="pending">
       <div class="node">08</div>
       <div class="card">
-        <div class="card-top"><h3>Sensor Gaps, Genealogy &amp; Two More Personas</h3><span class="pill pending">Pending</span></div>
-        <p class="gist">The brief's hardest asks, answered together: staying useful where there are no sensors, and tracing a late-surfacing defect back to its origin.</p>
+        <div class="card-top"><h3>Predictive Layer</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">Two models, seam stated loudly, plus rolling-horizon prediction — genuinely underexplored territory, since only ~2 prior works do DT-based bottleneck prediction rather than detection.</p>
         <ul class="steps">
-          <li data-s="pending">Harmonic extension across the line graph; two stations left uninstrumented</li>
-          <li data-s="pending">Observed / inferred / simulated tagging, with confidence and freshness</li>
-          <li data-s="pending">Graceful degradation charted at 100 / 80 / 60 / 40&nbsp;% coverage</li>
-          <li data-s="pending">Defect genealogy — origin station, affected unit range, confidence</li>
-          <li data-s="pending">Plant-manager trend view + leadership investment panel</li>
-          <li data-s="pending">Phase 8 PDF</li>
+          <li data-s="pending">Label-generating process documented <em>before</em> any metric is computed</li>
+          <li data-s="pending">Benchmark on real public data — including a deliberate SMOTE failure case</li>
+          <li data-s="pending">Live model: monotone constraints, isotonic calibration, held-out line configuration</li>
+          <li data-s="pending">Honest-lift gate — single-feature baseline published beside the model, whatever the lift</li>
+          <li data-s="pending">MCC always with its threshold; accuracy appears once, explaining why it's never reported</li>
+          <li data-s="pending">Rolling-horizon bottleneck prediction — fork, run forward, compute APM on the forecast</li>
+          <li data-s="pending">Phase 8 record + PDF</li>
         </ul>
-        <p class="out"><b>Gate</b> Two graph identities hold exactly; degradation curve committed</p>
+        <p class="out"><b>Gate</b> No config leakage; monotonicity holds; predicted-vs-actual accuracy reported</p>
       </div>
     </article>
 
     <article class="phase" data-status="pending">
       <div class="node">09</div>
       <div class="card">
-        <div class="card-top"><h3>Docs &amp; Verification</h3><span class="pill pending">Pending</span></div>
-        <p class="gist">The honesty ledger written down in full, and a clean-clone run proving someone else can start it.</p>
+        <div class="card-top"><h3>Sensor Gaps, Placement &amp; Genealogy</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">The brief's hardest asks, answered together at a scale where the measurement is real — 30 stations make the degradation curve mean something, not a cliff between two data points.</p>
         <ul class="steps">
-          <li data-s="pending">Full suite green; CI green on both operating systems</li>
-          <li data-s="pending">README — quickstart, minimum-signal table, capability ladder with a real test name per row</li>
-          <li data-s="pending">Honesty ledger; integration and scalability sections</li>
-          <li data-s="pending">Data, limitations and interview docs; four architecture decision records</li>
-          <li data-s="pending">Preflight check + clean-clone test</li>
-          <li data-s="pending">Phase 9 PDF</li>
+          <li data-s="pending">Harmonic extension across the line graph; asymmetric influence weights</li>
+          <li data-s="pending">Exact partition-of-unity evidence attribution — zero tuning parameters</li>
+          <li data-s="pending">OBSERVED / INFERRED / SIMULATED tagging; zero/missing/not-applicable kept distinct</li>
+          <li data-s="pending">Graceful-degradation curve at 100&rarr;40% coverage, pre-checked before being promised</li>
+          <li data-s="pending">Greedy submodular sensor placement with the (1&minus;1/e) guarantee</li>
+          <li data-s="pending">Defect genealogy — transfer-delay realignment, origin station, affected unit range, calibrated confidence</li>
+          <li data-s="pending">Phase 9 record + PDF</li>
         </ul>
-        <p class="out"><b>Gate</b> Clean clone → one documented command → working twin</p>
+        <p class="out"><b>Gate</b> Two graph identities hold exactly; genealogy trace matches a known injected origin</p>
       </div>
     </article>
 
     <article class="phase" data-status="pending">
       <div class="node">10</div>
       <div class="card">
-        <div class="card-top"><h3>Deploy &amp; Submission Readiness</h3><span class="pill pending">Pending</span></div>
-        <p class="gist">Falsifiability on camera. The three video beats exist so a judge can rule out a scripted demo without taking anything on trust.</p>
+        <div class="card-top"><h3>Multi-Persona Views, Docs &amp; Submission</h3><span class="pill pending">Pending</span></div>
+        <p class="gist">The other two personas, the honesty ledger written into the README in full, and falsifiability on camera.</p>
         <ul class="steps">
-          <li data-s="pending">Hosted deploy at reduced tick rate — or a limitations entry naming exactly why not</li>
-          <li data-s="pending">Repo visibility confirmed before any push</li>
-          <li data-s="pending">Beat 1 — live perturbation to a judge-chosen value, OS clock in frame</li>
-          <li data-s="pending">Beat 2 — browser event stream beside a terminal, identical tick numbers</li>
-          <li data-s="pending">Beat 3 — kill the server on camera; freeze; restart; resume</li>
-          <li data-s="pending">Phase 10 PDF; tracker all-green; tagged release</li>
+          <li data-s="pending">Plant-manager trend view + leadership ROI panel, each labelled with the requirement it answers</li>
+          <li data-s="pending">README — quickstart, minimum-signal table, capability ladder with a real test name per row</li>
+          <li data-s="pending">Data / limitations / interview docs; four architecture decision records</li>
+          <li data-s="pending">Full suite green; CI green on both operating systems (first authorised push)</li>
+          <li data-s="pending">Hosted deploy at reduced tick rate, or a limitations entry naming exactly why not</li>
+          <li data-s="pending">Three video beats — live perturbation, EventStream beside <code style="all:unset">curl</code>, Ctrl-C and resume on camera</li>
+          <li data-s="pending">Phase 10 record + PDF; tracker all-green; tagged release</li>
         </ul>
-        <p class="out"><b>Gate</b> All three beats recorded; deliverable inputs handed to teammates</p>
+        <p class="out"><b>Gate</b> Clean clone &rarr; one documented command &rarr; working twin, verified by someone else</p>
       </div>
     </article>
 
@@ -746,10 +753,11 @@
         <h3>D &middot; Verification</h3>
         <p class="why">Claims that a reviewer can re-run themselves.</p>
         <ul>
-          <li data-s="pending">Twenty or more tests green; CI green on both operating systems</li>
+          <li data-s="done">Test suite exists and passes on every commit so far (12/12)</li>
+          <li data-s="pending">Thirty-five or more tests green at full scope; CI green on both operating systems</li>
           <li data-s="pending">Both silent-bug regressions fail red when their guard is removed</li>
           <li data-s="pending">Same seed reproduces exactly; a different seed diverges</li>
-          <li data-s="pending">Analytics path runs with the simulation library unimported</li>
+          <li data-s="done">Analytics path runs with the simulation library unimported</li>
           <li data-s="pending">Fresh-machine clean-clone test passed by someone else</li>
           <li data-s="pending">All three falsifiability beats recorded</li>
         </ul>
