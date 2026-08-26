@@ -1,20 +1,30 @@
 """Non-de-scopable: proves LineTwin is source-agnostic, not simulation-only.
 
 The direct, structural answer to "is this really a twin, or a simulation with a
-dashboard bolted on?" -- `ReplaySource` reconstructs frozen `Snapshot` objects from
-a fixture file and nothing else. `simpy` is asserted absent from `sys.modules`
-throughout, which a script cannot fake: importing `twin.sim.*` anywhere in this
-process would pull `simpy` in transitively and this test would go red.
+dashboard bolted on?" -- `ReplaySource` reconstructs frozen `Snapshot` objects
+from a fixture file and nothing else.
 
-As later phases add bottleneck detection (Phase 5) and risk scoring (Phase 8),
-extend this test to run those analyses against `ReplaySource` output too, keeping
-the same "simpy never imported" assertion. Do not weaken that assertion to make a
-later addition easier -- if something here needs simpy, it does not belong in the
-source-agnostic path.
+IMPORTANT, and a real bug found while building this: the "simpy is not imported"
+claim CANNOT be checked by asserting `"simpy" not in sys.modules` from within an
+ordinary pytest test function. pytest collects and runs all test files in one
+shared process, and `test_cascade.py` / `test_active_period.py` both import
+`twin.sim.station`, which imports `simpy`. Once any test file in the session has
+done that, `simpy` stays in `sys.modules` for the rest of the process --
+including inside this file's tests, regardless of what THIS file itself
+imports. An in-process check was therefore asserting something true about test
+execution order, not about this module's actual dependencies, and failed
+non-deterministically depending on which files pytest happened to collect
+first.
+
+The only architecturally sound way to make this claim is to run it in a
+genuinely separate process that imports ONLY `twin.contracts` and
+`twin.sources`, with nothing else on the import path to pull `simpy` in. That is
+what this file does below.
 """
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,16 +35,50 @@ from twin.sources import ReplaySource
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "replay_30x60.json"
 
+_ISOLATED_CHECK = """
+import sys
+from pathlib import Path
+from twin.sources import ReplaySource
 
-def test_simpy_is_not_imported_by_the_contract_or_source_modules() -> None:
-    assert "simpy" not in sys.modules, (
-        "twin.contracts / twin.sources must not transitively import simpy — "
-        "if this fails, something in the import chain reaches into the simulation"
+fixture = Path(sys.argv[1])
+
+assert "simpy" not in sys.modules, "simpy must not be imported merely by importing twin.sources"
+
+async def main():
+    source = ReplaySource(fixture)
+    count = 0
+    async for snap in source.frames():
+        count += 1
+    await source.close()
+    assert count == 60, f"expected 60 snapshots, got {count}"
+    assert "simpy" not in sys.modules, "consuming the whole replay must not import simpy"
+    print("OK")
+
+import asyncio
+asyncio.run(main())
+"""
+
+
+def test_simpy_is_absent_from_the_import_chain_in_a_clean_process() -> None:
+    """Runs in a fresh interpreter -- no other test file's imports can leak in."""
+    result = subprocess.run(
+        [sys.executable, "-c", _ISOLATED_CHECK, str(FIXTURE)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
     )
+    assert result.returncode == 0, (
+        f"isolated source-agnosticism check failed:\nstdout={result.stdout}\nstderr={result.stderr}"
+    )
+    assert result.stdout.strip() == "OK"
 
 
 @pytest.mark.asyncio
-async def test_replay_source_yields_valid_snapshots_with_simpy_never_imported() -> None:
+async def test_replay_source_yields_valid_snapshots_in_tick_order() -> None:
+    """In-process: fine to run alongside simpy-importing tests, since this test
+    makes no claim about sys.modules -- only about ReplaySource's own behavior.
+    """
     source = ReplaySource(FIXTURE)
     count = 0
     last_seq = -1
@@ -46,7 +90,6 @@ async def test_replay_source_yields_valid_snapshots_with_simpy_never_imported() 
     await source.close()
 
     assert count == 60
-    assert "simpy" not in sys.modules, "consuming the whole replay must not import simpy"
 
 
 @pytest.mark.asyncio

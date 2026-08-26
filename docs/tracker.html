@@ -484,7 +484,7 @@
     <div style="text-align:right">
       <p class="eyebrow">Status</p>
       <p class="mono" style="font-size:13px;color:var(--active);margin:5px 0 0;font-weight:500">
-        Phase 3 in progress
+        Phase 4 in progress
       </p>
     </div>
   </header>
@@ -492,8 +492,8 @@
   <section class="board" aria-label="Progress summary">
     <div class="cell">
       <span class="k">Phases done</span>
-      <span class="v" id="ph-done">2<small> / 10</small></span>
-      <span class="meter"><i id="ph-meter" style="width:20%"></i></span>
+      <span class="v" id="ph-done">3<small> / 10</small></span>
+      <span class="meter"><i id="ph-meter" style="width:30%"></i></span>
     </div>
     <div class="cell">
       <span class="k">Steps done</span>
@@ -502,7 +502,7 @@
     </div>
     <div class="cell now">
       <span class="k">Current phase</span>
-      <span class="v">Simulation Core</span>
+      <span class="v">Ground Truth by<br>Sensitivity Analysis</span>
     </div>
     <div class="cell">
       <span class="k">Compliance</span>
@@ -553,28 +553,28 @@
       </div>
     </article>
 
-    <article class="phase" data-status="active">
+    <article class="phase" data-status="done">
       <div class="node">03</div>
       <div class="card">
-        <div class="card-top"><h3>Simulation Core</h3><span class="pill active">In progress</span></div>
+        <div class="card-top"><h3>Simulation Core</h3><span class="pill done">Done</span></div>
         <p class="gist">The risk gate. Two silent bugs here would invalidate the cascade thesis without raising a single error, so both get a dedicated regression test proven to fail red when its guard is removed.</p>
         <ul class="steps">
-          <li data-s="pending">Parameter grounding — cycle times and CVs from Future Factories V2 / PyScrew, or stamped uncalibrated</li>
-          <li data-s="pending">Distribution helper — sole caller of <code style="all:unset">rng.lognormal</code></li>
-          <li data-s="pending">Per-station seeded generators (one <code style="all:unset">SeedSequence</code>, one PCG64 child each)</li>
-          <li data-s="pending">Station pattern with <em>both</em> load-bearing guards</li>
-          <li data-s="pending">30 stations, 3 zones, mixed-model; per-unit event log against the frozen schema</li>
-          <li data-s="pending">Cascade and active-period tests — each proven to fail red when its guard is removed</li>
-          <li data-s="pending">Phase 3 record + PDF, with the parameter-provenance table</li>
+          <li data-s="done">Parameter grounding — corrected to <code style="all:unset">synthetic — uncalibrated</code> after finding no raw numeric tables were actually available to cite</li>
+          <li data-s="done">Distribution helper — sole caller of <code style="all:unset">rng.lognormal</code>, empirically verified to recover requested mean/CV</li>
+          <li data-s="done">Per-station seeded generators (one <code style="all:unset">SeedSequence</code>, one PCG64 child each)</li>
+          <li data-s="done">Station pattern with <em>three</em> load-bearing guards, each with an <code style="all:unset">_unsafe_*</code> proof flag</li>
+          <li data-s="done">30 stations, 3 zones, mixed-model; per-unit event log against the frozen schema</li>
+          <li data-s="done">Cascade, active-period, and full-line tests — all proven to fail red when their guard is removed</li>
+          <li data-s="done">Phase 3 record + PDF, with the parameter-provenance correction documented</li>
         </ul>
-        <p class="out"><b>Gate</b> Removing a guard must turn its test red — otherwise the test is wrong</p>
+        <p class="out"><b>Gate met</b> 36/36 tests green · 3 real bugs found and fixed in the tests themselves (false-alarm deadlock, coarse determinism signature, in-process sys.modules contamination) · repo pushed to GitHub, CI green on ubuntu + windows</p>
       </div>
     </article>
 
-    <article class="phase" data-status="pending">
+    <article class="phase" data-status="active">
       <div class="node">04</div>
       <div class="card">
-        <div class="card-top"><h3>Ground Truth by Sensitivity Analysis</h3><span class="pill pending">Pending</span></div>
+        <div class="card-top"><h3>Ground Truth by Sensitivity Analysis</h3><span class="pill active">In progress</span></div>
         <p class="gist">Possible only because we own the simulator — computing a true bottleneck by perturbation rather than citing someone else's. The foundation the detector benchmark stands on.</p>
         <ul class="steps">
           <li data-s="pending">Sensitivity harness — perturb each station's cycle time, measure throughput response</li>
@@ -753,11 +753,11 @@
         <h3>D &middot; Verification</h3>
         <p class="why">Claims that a reviewer can re-run themselves.</p>
         <ul>
-          <li data-s="done">Test suite exists and passes on every commit so far (12/12)</li>
-          <li data-s="pending">Thirty-five or more tests green at full scope; CI green on both operating systems</li>
-          <li data-s="pending">Both silent-bug regressions fail red when their guard is removed</li>
-          <li data-s="pending">Same seed reproduces exactly; a different seed diverges</li>
-          <li data-s="done">Analytics path runs with the simulation library unimported</li>
+          <li data-s="done">Test suite exists and passes on every commit so far (36/36)</li>
+          <li data-s="done">CI green on both operating systems — confirmed via a real GitHub Actions run, not just authored</li>
+          <li data-s="done">Both silent-bug regressions (plus a third, active-period merging) fail red when their guard is removed</li>
+          <li data-s="done">Same seed reproduces exactly; a different seed diverges — at both the station and full-line level</li>
+          <li data-s="done">Analytics path runs with the simulation library unimported — proven via subprocess isolation after an in-process check was found to be structurally unable to prove it</li>
           <li data-s="pending">Fresh-machine clean-clone test passed by someone else</li>
           <li data-s="pending">All three falsifiability beats recorded</li>
         </ul>

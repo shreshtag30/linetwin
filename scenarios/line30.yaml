@@ -1,0 +1,87 @@
+# LineTwin canonical scenario: 30 stations, 3 zones, mixed-model.
+#
+# PARAMETER PROVENANCE — read this before trusting a number in this file.
+#
+# During Phase 3 planning, an earlier draft of this file cited "Future Factories V2"
+# and "PyScrew" as the source of specific per-zone cycle-time means and CVs. That
+# was caught and reverted before being written: this project has read PAPER
+# SUMMARIES of those datasets (via literature review), not the raw tables. No
+# specific number below was extracted from either dataset. Writing `source:
+# future_factories_v2, mean_cycle_s: 42.3` for a number nobody actually computed
+# from that data would be exactly the fabrication docs/CITATIONS.md exists to ban.
+#
+# So: every cycle-time, CV, and buffer-capacity value below is
+# `synthetic — uncalibrated`. Future Factories V2 (real assembly pipeline, 292
+# cycles, 21 cycle states) and PyScrew (real screw-driving time series) are cited
+# in docs/CITATIONS.md only for the qualitative fact that real analogues with this
+# general shape and variance structure exist — never as the source of a specific
+# number here. What WOULD calibrate these numbers: per-station cycle logs joined
+# to maintenance work orders on vehicle ID, which this project does not have
+# access to (see docs/DATA.md once Phase 8 writes it).
+#
+# The one number in this project with a real, checkable citation is Bosch's
+# published ~0.58% defect prevalence (docs/CITATIONS.md), used in Phase 8 as a
+# calibration TARGET for the synthetic defect rate — never downloaded, never
+# trained on, and not a cycle-time parameter at all.
+
+name: line30
+description: >
+  Illustrative 30-station, 3-zone mixed-model assembly line — a deliberately
+  scoped subset of the brief's reference 30-50 station line.
+seed: 20260826
+
+zones:
+  body:
+    station_range: [1, 12]
+    base_cycle_time_s: 45.0
+    cv: 0.12
+    buffer_capacity: 6
+    provenance: synthetic — uncalibrated
+  paint:
+    station_range: [13, 18]
+    base_cycle_time_s: 65.0
+    cv: 0.22
+    buffer_capacity: 4
+    provenance: synthetic — uncalibrated
+  final:
+    station_range: [19, 30]
+    base_cycle_time_s: 55.0
+    cv: 0.28
+    buffer_capacity: 5
+    provenance: synthetic — uncalibrated
+
+# 8 of 30 (27%) uninstrumented — heavier than "a meaningful minority" so the
+# inference layer (Phase 9) is load-bearing, not decorative. See docs/DECISIONS.md.
+dark_stations:
+  - S07   # body:  1 of 12
+  - S15   # paint: 2 of 6
+  - S16
+  - S22   # final: 5 of 12
+  - S24
+  - S27
+  - S28
+  - S30
+
+bottleneck:
+  station_id: S17
+  cycle_time_multiplier: 1.3
+  provenance: synthetic — deliberately configured, not a calibration claim
+
+variants:
+  - id: sedan
+    weight: 0.5
+    cycle_time_multiplier: 1.0
+  - id: suv
+    weight: 0.3
+    cycle_time_multiplier: 1.08
+  - id: hatchback
+    weight: 0.2
+    cycle_time_multiplier: 0.94
+
+# Rows of this operator sum to exactly 1 (partition of unity) — set in
+# src/twin/graph/inference.py, not here. w_down > w_up because defects ride the
+# part forward (Phase 9).
+sensor_gap_weights:
+  w_down: 1.0
+  w_up: 0.35
+  lambda: 0.15
