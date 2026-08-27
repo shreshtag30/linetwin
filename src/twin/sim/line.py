@@ -117,6 +117,14 @@ class Line:
         self.events: list[UnitEvent] = []
         self._next_unit_id = 0
 
+        # Live-adjustable per-station multiplier, separate from the static
+        # scenario config, so Phase 6's control endpoint can perturb a
+        # station's cycle time mid-run without rebuilding the line. Seeded
+        # from the scenario's configured bottleneck multiplier so existing
+        # behavior (Phases 3-5) is unchanged until a control command arrives.
+        self._live_multiplier: dict[str, float] = dict.fromkeys(config.station_ids, 1.0)
+        self._live_multiplier[config.bottleneck_station_id] = config.bottleneck_multiplier
+
         self._rngs = make_station_generators(config.seed, config.station_ids)
         # Separate stream for variant assignment, independent of any station's
         # own stream, so adding/removing a variant does not perturb station
@@ -138,22 +146,20 @@ class Line:
             zone = config.zone_of[sid]
             base_cycle = config.base_cycle_time_of[sid]
             cv = config.cv_of[sid]
-            multiplier = (
-                config.bottleneck_multiplier if sid == config.bottleneck_station_id else 1.0
-            )
             rng = self._rngs[sid]
 
             def sampler(
                 part: object,
+                _sid: str = sid,
                 _rng: np.random.Generator = rng,
                 _mean: float = base_cycle,
                 _cv: float = cv,
-                _mult: float = multiplier,
                 _zone: Zone = zone,
             ) -> float:
                 assert isinstance(part, _Part)
                 variant_mult = self.config.variant_zone_multiplier[part.variant][_zone]
-                return sample_cycle_time(_rng, _mean * _mult * variant_mult, _cv)
+                live_mult = self._live_multiplier[_sid]
+                return sample_cycle_time(_rng, _mean * live_mult * variant_mult, _cv)
 
             def make_on_departure(_sid: str, _zone: Zone):
                 def _on_departure(
@@ -235,6 +241,17 @@ class Line:
 
     def time_in_state(self, station_id: str) -> dict[StationState, float]:
         return dict(self.stations[station_id].time_in_state)
+
+    def set_cycle_time_multiplier(self, station_id: str, multiplier: float) -> None:
+        """Live perturbation entry point for Phase 6's control endpoint.
+        Takes effect on this station's NEXT sampled cycle time -- a unit
+        already mid-cycle keeps its already-sampled duration, matching how a
+        real machine would finish its current cycle before a parameter
+        change takes effect.
+        """
+        if station_id not in self._live_multiplier:
+            raise KeyError(station_id)
+        self._live_multiplier[station_id] = multiplier
 
 
 def build_line(env: simpy.Environment, scenario_path: Path | str) -> Line:

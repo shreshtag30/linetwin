@@ -484,7 +484,7 @@
     <div style="text-align:right">
       <p class="eyebrow">Status</p>
       <p class="mono" style="font-size:13px;color:var(--active);margin:5px 0 0;font-weight:500">
-        Phase 5 complete — paused (Phase 6 next)
+        Phase 6 complete — continuing
       </p>
     </div>
   </header>
@@ -492,8 +492,8 @@
   <section class="board" aria-label="Progress summary">
     <div class="cell">
       <span class="k">Phases done</span>
-      <span class="v" id="ph-done">5<small> / 10</small></span>
-      <span class="meter"><i id="ph-meter" style="width:50%"></i></span>
+      <span class="v" id="ph-done">6<small> / 10</small></span>
+      <span class="meter"><i id="ph-meter" style="width:60%"></i></span>
     </div>
     <div class="cell">
       <span class="k">Steps done</span>
@@ -502,7 +502,7 @@
     </div>
     <div class="cell now">
       <span class="k">Current phase</span>
-      <span class="v">Paused after Phase 5</span>
+      <span class="v">Floor-Supervisor View</span>
     </div>
     <div class="cell">
       <span class="k">Compliance</span>
@@ -607,28 +607,28 @@
       </div>
     </article>
 
-    <article class="phase" data-status="pending">
+    <article class="phase" data-status="done">
       <div class="node">06</div>
       <div class="card">
-        <div class="card-top"><h3>Engine &amp; Transport</h3><span class="pill pending">Pending</span></div>
-        <p class="gist">Real-time-paced tick loop over a single-slot conflation bus, so a slow client can never stall the simulation clock.</p>
+        <div class="card-top"><h3>Engine &amp; Transport</h3><span class="pill done">Done</span><span class="pill" style="background:var(--blocked-soft);color:var(--blocked)">Critical bug found</span></div>
+        <p class="gist">Real-time-paced tick loop over a single-slot conflation bus. Manual verification found a FastAPI response-serialization bug that deadlocked the entire server at 100% CPU under load — root-caused, fixed, and regression-tested.</p>
         <ul class="steps">
-          <li data-s="pending">Plain <code style="all:unset">simpy.Environment</code>, absolute-deadline anchored sleep, re-anchoring past 5 ticks of lag</li>
-          <li data-s="pending">Never <code style="all:unset">env.peek()</code>/<code style="all:unset">env.step()</code> — the URGENT sentinel keeps <code style="all:unset">env.now</code> exact</li>
-          <li data-s="pending">Single-slot conflation bus; SSE generators emit only on <code style="all:unset">seq</code> change</li>
-          <li data-s="pending">Stream / state / control / heartbeat / restart / health routes; control queue drained at tick top</li>
-          <li data-s="pending">Full snapshot per tick, no deltas; fault frames on engine error</li>
-          <li data-s="pending"><code style="all:unset">curl -N</code> verified live; malformed payloads rejected; 3 concurrent clients stay in sync</li>
-          <li data-s="pending">Phase 6 record + PDF</li>
+          <li data-s="done">Absolute-deadline anchored sleep, re-anchoring past 5 ticks of lag; <code style="all:unset">env.run(until=tick*SIM_DT)</code>, never peek/step</li>
+          <li data-s="done">Single-slot conflation bus (<code style="all:unset">asyncio.Condition</code>); proven a slow waiter cannot block publish</li>
+          <li data-s="done">Stream / state / control / heartbeat / restart / health routes; control queue drained at tick top</li>
+          <li data-s="done">Live perturbation added to <code style="all:unset">Line</code> — cycle-time multiplier was previously baked in at construction, not adjustable</li>
+          <li data-s="done">Found &amp; fixed: <code style="all:unset">-&gt; Snapshot</code> response_model took 1.35s/request (vs 2ms manual) and deadlocked the server under load</li>
+          <li data-s="done"><code style="all:unset">curl -N</code> verified live; malformed payloads rejected; 3 concurrent clients end in exact sync</li>
+          <li data-s="done">Phase 6 record + PDF</li>
         </ul>
-        <p class="out"><b>Gate</b> <code style="all:unset">sim_time_s == tick*SIM_DT</code> exactly; real-time factor 1.00 &plusmn; 0.05</p>
+        <p class="out"><b>Gate met</b> <code style="all:unset">sim_time_s == tick*SIM_DT</code> exact &middot; real-time factor 0.999 &middot; restart recovers a faulted engine &middot; 96/96 tests green</p>
       </div>
     </article>
 
-    <article class="phase" data-status="pending">
+    <article class="phase" data-status="active">
       <div class="node">07</div>
       <div class="card">
-        <div class="card-top"><h3>Floor-Supervisor View</h3><span class="pill pending">Pending</span></div>
+        <div class="card-top"><h3>Floor-Supervisor View</h3><span class="pill active">In progress</span></div>
         <p class="gist">The real-time persona, and the first of three. Nothing here counts as done until the change is watched happening in a browser.</p>
         <ul class="steps">
           <li data-s="pending">Zone-grouped station grid on the Accenture palette — 30 stations need different information design than 6</li>
@@ -753,7 +753,7 @@
         <h3>D &middot; Verification</h3>
         <p class="why">Claims that a reviewer can re-run themselves.</p>
         <ul>
-          <li data-s="done">Test suite exists and passes on every commit so far (70/70)</li>
+          <li data-s="done">Test suite exists and passes on every commit so far (96/96)</li>
           <li data-s="done">CI green on both operating systems — confirmed via a real GitHub Actions run, not just authored</li>
           <li data-s="done">Both silent-bug regressions (plus a third, active-period merging) fail red when their guard is removed</li>
           <li data-s="done">Same seed reproduces exactly; a different seed diverges — at both the station and full-line level</li>
