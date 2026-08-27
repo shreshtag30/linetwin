@@ -484,7 +484,7 @@
     <div style="text-align:right">
       <p class="eyebrow">Status</p>
       <p class="mono" style="font-size:13px;color:var(--active);margin:5px 0 0;font-weight:500">
-        Phase 6 complete — continuing
+        Phase 7 complete — continuing
       </p>
     </div>
   </header>
@@ -492,8 +492,8 @@
   <section class="board" aria-label="Progress summary">
     <div class="cell">
       <span class="k">Phases done</span>
-      <span class="v" id="ph-done">6<small> / 10</small></span>
-      <span class="meter"><i id="ph-meter" style="width:60%"></i></span>
+      <span class="v" id="ph-done">7<small> / 10</small></span>
+      <span class="meter"><i id="ph-meter" style="width:70%"></i></span>
     </div>
     <div class="cell">
       <span class="k">Steps done</span>
@@ -502,7 +502,7 @@
     </div>
     <div class="cell now">
       <span class="k">Current phase</span>
-      <span class="v">Floor-Supervisor View</span>
+      <span class="v">Predictive Layer</span>
     </div>
     <div class="cell">
       <span class="k">Compliance</span>
@@ -625,28 +625,28 @@
       </div>
     </article>
 
-    <article class="phase" data-status="active">
+    <article class="phase" data-status="done">
       <div class="node">07</div>
       <div class="card">
-        <div class="card-top"><h3>Floor-Supervisor View</h3><span class="pill active">In progress</span></div>
-        <p class="gist">The real-time persona, and the first of three. Nothing here counts as done until the change is watched happening in a browser.</p>
+        <div class="card-top"><h3>Floor-Supervisor View</h3><span class="pill done">Done</span><span class="pill" style="background:var(--blocked-soft);color:var(--blocked)">2nd critical bug found</span></div>
+        <p class="gist">The real-time persona, and the first of three. Live browser testing caught a dark-station provenance bug and an independent second way to deadlock the server — root-caused with a real stack trace, not a guess.</p>
         <ul class="steps">
-          <li data-s="pending">Zone-grouped station grid on the Accenture palette — 30 stations need different information design than 6</li>
-          <li data-s="pending">Bottleneck callout carrying mode decomposition and the Phase 5 confidence annotation</li>
-          <li data-s="pending">Vendored uPlot with its MIT licence; throughput and queue-depth charts</li>
-          <li data-s="pending">Vitals bar off real <code style="all:unset">EventSource.readyState</code>; kill/resume</li>
-          <li data-s="pending">Verified live: drag the slider, bottleneck moves within 2&nbsp;s</li>
-          <li data-s="pending">Latency asserted in a test, not eyeballed; stream smoke test</li>
-          <li data-s="pending">Phase 7 record + PDF</li>
+          <li data-s="done">Zone-grouped 30-station grid on the restored Accenture palette; uPlot 1.6.32 vendored with its MIT licence</li>
+          <li data-s="done">Bottleneck callout carrying mode decomposition and the Phase 5 confidence annotation</li>
+          <li data-s="done">Vitals bar off real <code style="all:unset">EventSource.readyState</code>; Kill/Resume/Restart</li>
+          <li data-s="done">Found &amp; fixed: dark stations showed a green "observed" pill on a missing value — UI must trust <code style="all:unset">missingness</code>, not <code style="all:unset">source</code></li>
+          <li data-s="done">Found &amp; fixed (2nd deadlock): extreme perturbation + reconnect froze the whole server — root cause was synchronous Tukey-Kramer blocking the event loop, fixed with <code style="all:unset">asyncio.to_thread</code></li>
+          <li data-s="done">Verified live: 9&times; perturbation visible in ~0.75s; regression test proven to fail without the fix</li>
+          <li data-s="done">Phase 7 record + PDF</li>
         </ul>
-        <p class="out"><b>Gate</b> Kill the stream — every number freezes and the lamp reddens</p>
+        <p class="out"><b>Gate met</b> Kill stream freezes every vital &amp; reddens the lamp &middot; golden path verified live &middot; 98/98 tests green</p>
       </div>
     </article>
 
-    <article class="phase" data-status="pending">
+    <article class="phase" data-status="active">
       <div class="node">08</div>
       <div class="card">
-        <div class="card-top"><h3>Predictive Layer</h3><span class="pill pending">Pending</span></div>
+        <div class="card-top"><h3>Predictive Layer</h3><span class="pill active">In progress</span></div>
         <p class="gist">Two models, seam stated loudly, plus rolling-horizon prediction — genuinely underexplored territory, since only ~2 prior works do DT-based bottleneck prediction rather than detection.</p>
         <ul class="steps">
           <li data-s="pending">Label-generating process documented <em>before</em> any metric is computed</li>
@@ -753,7 +753,7 @@
         <h3>D &middot; Verification</h3>
         <p class="why">Claims that a reviewer can re-run themselves.</p>
         <ul>
-          <li data-s="done">Test suite exists and passes on every commit so far (96/96)</li>
+          <li data-s="done">Test suite exists and passes on every commit so far (98/98)</li>
           <li data-s="done">CI green on both operating systems — confirmed via a real GitHub Actions run, not just authored</li>
           <li data-s="done">Both silent-bug regressions (plus a third, active-period merging) fail red when their guard is removed</li>
           <li data-s="done">Same seed reproduces exactly; a different seed diverges — at both the station and full-line level</li>

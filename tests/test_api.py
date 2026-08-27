@@ -166,6 +166,37 @@ async def test_state_is_503_before_any_tick_has_run() -> None:
         assert r.status_code == 503
 
 
+@pytest.mark.asyncio
+async def test_frontend_static_files_are_served_without_shadowing_the_api(
+    client: httpx.AsyncClient,
+) -> None:
+    """The static mount is registered LAST specifically so it never shadows
+    an API route (routes.py). This asserts both halves of that claim: the
+    frontend files are actually reachable, AND the API routes still win.
+    """
+    index = await client.get("/")
+    assert index.status_code == 200
+    assert "LineTwin" in index.text
+
+    app_js = await client.get("/app.js")
+    assert app_js.status_code == 200
+    assert "EventSource" in app_js.text
+
+    styles = await client.get("/styles.css")
+    assert styles.status_code == 200
+    assert "--purple" in styles.text  # the Accenture token, docs/DECISIONS.md
+
+    uplot = await client.get("/vendor/uplot/uPlot.iife.min.js")
+    assert uplot.status_code == 200
+    assert len(uplot.content) > 10_000  # a real vendored library, not an empty stub
+
+    # The part that actually matters: API routes still take priority over the
+    # catch-all static mount, even though both could in principle match "/".
+    healthz = await client.get("/healthz")
+    assert healthz.status_code == 200
+    assert healthz.json() == {"status": "ok"}
+
+
 # ---------------------------------------------------------------------------
 # SSE stream: a real subprocess server, real sockets.
 #

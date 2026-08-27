@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LineTwin — Floor Supervisor</title>
+  <link rel="stylesheet" href="vendor/uplot/uPlot.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">LineTwin</span>
+      <span class="brand-sub">Floor Supervisor</span>
+    </div>
+    <div id="vitals" class="vitals">
+      <span class="lamp" id="lamp" data-state="connecting"></span>
+      <span class="vital"><b id="v-readystate">connecting…</b></span>
+      <span class="vital">tick <b id="v-tick">–</b></span>
+      <span class="vital">seq <b id="v-seq">–</b></span>
+      <span class="vital">sim <b id="v-simtime">–</b> s</span>
+      <span class="vital">rtf <b id="v-rtf">–</b></span>
+      <span class="vital">lag <b id="v-lag">–</b> ms</span>
+      <button id="btn-kill" class="btn btn-ghost">Kill stream</button>
+      <button id="btn-resume" class="btn btn-ghost" disabled>Resume</button>
+      <button id="btn-restart" class="btn btn-ghost">Restart</button>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <section class="panel bottleneck-panel">
+      <h2>Bottleneck</h2>
+      <div id="bottleneck-card" class="bottleneck-card">
+        <div class="bn-station" id="bn-station">–</div>
+        <div class="bn-meta">
+          <span class="pill" id="bn-confidence">–</span>
+          <span class="bn-runnerup">runner-up: <b id="bn-runnerup">–</b></span>
+        </div>
+        <p class="bn-explanation" id="bn-explanation">Waiting for first tick…</p>
+        <div class="bn-mode" id="bn-mode"></div>
+      </div>
+    </section>
+
+    <section class="panel control-panel">
+      <h2>Perturbation</h2>
+      <div class="control-row">
+        <label for="ctl-station">Station</label>
+        <select id="ctl-station"></select>
+      </div>
+      <div class="control-row">
+        <label for="ctl-mult">Cycle-time multiplier: <b id="ctl-mult-val">1.0×</b></label>
+        <input type="range" id="ctl-mult" min="0.1" max="10" step="0.1" value="1.0">
+      </div>
+      <button id="ctl-apply" class="btn btn-primary">Apply</button>
+      <p class="control-ack" id="ctl-ack"></p>
+    </section>
+
+    <section class="panel charts-panel">
+      <h2>Line trend</h2>
+      <div class="chart-row">
+        <div class="chart-box">
+          <h3>Throughput (UPH)</h3>
+          <div id="chart-throughput"></div>
+        </div>
+        <div class="chart-box">
+          <h3>WIP (units queued)</h3>
+          <div id="chart-wip"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel stations-panel">
+      <h2>Stations</h2>
+      <div id="zones"></div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <span>Digital Shadow (Kritzinger 2018) · Digital Twin Prototype (Grieves &amp; Vickers 2017) · Predictive maturity (Villegas et al. 2025)</span>
+    <span id="run-meta-footer"></span>
+  </footer>
+
+  <script src="vendor/uplot/uPlot.iife.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

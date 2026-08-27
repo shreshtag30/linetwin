@@ -247,7 +247,31 @@ class Engine:
         station_ids = self.config.station_ids
         stations = [self._station_snapshot(sid) for sid in station_ids]
         views = [StationView.from_station(self.line.stations[sid]) for sid in station_ids]
-        bottleneck = diagnose(views)
+
+        # REAL BUG, found via a py-spy-style faulthandler stack dump against a
+        # server hung at 100% CPU (Phase 7): under an extreme perturbation
+        # (a 9x multiplier, tested by hand), the active-period distributions
+        # for different stations become extremely separated, and
+        # statsmodels' pairwise_tukeyhsd computes its p-value via scipy's
+        # studentized-range survival function -- adaptive numerical
+        # integration (scipy.integrate.quad) that becomes pathologically slow
+        # for extreme, widely-separated inputs. That is synchronous,
+        # CPU-bound code with no await points, so it blocked the ENTIRE
+        # asyncio event loop -- including all HTTP handling -- for as long as
+        # the integration ran. Reproduced directly: heavy perturbation +
+        # closing/reopening the SSE stream deadlocked the whole server, every
+        # request hanging indefinitely, confirmed via a real stack trace
+        # rather than assumed.
+        #
+        # `asyncio.to_thread` is the right tool here specifically because
+        # this computation's cost is unbounded and can genuinely reach
+        # multiple seconds -- unlike Phase 8's live risk-scoring inference
+        # (a ~microsecond XGBoost predict, where to_thread's own dispatch
+        # overhead would dominate and thread offload is the wrong call).
+        # Offloading here does not make the computation itself faster; it
+        # keeps the event loop -- and therefore every other request --
+        # responsive while it runs.
+        bottleneck = await asyncio.to_thread(diagnose, views)
 
         throughputs = [s.throughput_uph for s in stations]
         line_throughput = sum(throughputs) / len(throughputs) if throughputs else 0.0

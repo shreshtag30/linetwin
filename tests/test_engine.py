@@ -5,11 +5,12 @@ single-slot conflation bus -- no HTTP involved.
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 
 import pytest
 
-from twin.contracts import REAL_DT, SIM_DT, ControlCommand
+from twin.contracts import REAL_DT, SIM_DT, BottleneckVerdict, ControlCommand
 from twin.sim.engine import ConflationBus, Engine
 
 SCENARIO = Path(__file__).resolve().parents[1] / "scenarios" / "line30.yaml"
@@ -218,3 +219,60 @@ class TestConflationBus:
             )
         assert bus.latest is not None
         assert bus.latest.seq == 5
+
+
+@pytest.mark.asyncio
+async def test_a_slow_diagnose_does_not_block_the_event_loop(monkeypatch) -> None:
+    """Regression test for the real deadlock this phase found: an extreme
+    perturbation makes diagnostic/bottleneck.py's Tukey-Kramer computation
+    pathologically slow (confirmed via a faulthandler stack dump against a
+    hung server -- see docs/phases/phase-07-floor-supervisor.md), and because
+    it used to run synchronously inside the tick loop, it blocked the entire
+    single-threaded event loop for as long as it took: every other coroutine,
+    including HTTP request handlers, starved completely.
+
+    This test does not need scipy's actual pathology to prove the fix --
+    it needs to prove the ARCHITECTURE is right: that a slow, synchronous
+    `diagnose()` call cannot stall unrelated concurrent work. A "canary"
+    coroutine increments a counter on a tight timer throughout the test;
+    if `engine.py` still called `diagnose()` directly instead of via
+    `asyncio.to_thread`, this canary would stall for the full 0.4s the fake
+    diagnose blocks for, and the assertion below would fail.
+    """
+    import twin.sim.engine as engine_module
+
+    def _slow_diagnose(_views):
+        time.sleep(0.4)  # synchronous, CPU-bound-style blocking -- the actual failure mode
+        return BottleneckVerdict(station_id=None, confidence="none", explanation="fake")
+
+    monkeypatch.setattr(engine_module, "diagnose", _slow_diagnose)
+
+    canary_ticks = 0
+    canary_running = True
+
+    async def canary():
+        nonlocal canary_ticks
+        while canary_running:
+            await asyncio.sleep(0.01)
+            canary_ticks += 1
+
+    engine = Engine(SCENARIO, seed=1)
+    canary_task = asyncio.create_task(canary())
+    engine_task = asyncio.create_task(engine.run())
+
+    await asyncio.sleep(0.6)  # long enough to span at least one slow diagnose() call
+
+    canary_running = False
+    engine.stop()
+    await engine_task
+    await canary_task
+
+    # If the event loop had been blocked for the 0.4s the fake diagnose sleeps,
+    # the canary -- ticking every 10ms -- would have accumulated far fewer
+    # increments than the ~60 expected over 0.6s. A generous floor (30) leaves
+    # headroom for CI scheduling noise while still failing hard on a genuine
+    # regression back to a blocking call.
+    assert canary_ticks > 30, (
+        f"canary only ticked {canary_ticks} times in 0.6s -- the event loop was blocked, "
+        "meaning diagnose() is no longer running in a thread"
+    )

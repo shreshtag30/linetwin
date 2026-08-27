@@ -12,11 +12,14 @@ from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Response
 from fastapi.sse import EventSourceResponse
+from fastapi.staticfiles import StaticFiles
 
 from twin.contracts import ControlAck, ControlCommand
 from twin.sim.engine import Engine
 
 from .sse import make_stream_route
+
+WEB_DIR = Path(__file__).resolve().parents[3] / "web"
 
 
 def make_control_routes(engine: Engine) -> APIRouter:
@@ -108,6 +111,15 @@ def create_app(scenario_path: Path | str, *, seed: int | None = None) -> FastAPI
         methods=["GET"],
         response_class=EventSourceResponse,
     )
+
+    # Mounted LAST, deliberately: a Mount is matched like any other route in
+    # registration order, so mounting the static frontend before the API
+    # routes above would let its catch-all prefix ("/") shadow them. This
+    # ordering is what makes "API routes always win, static files are the
+    # fallback" true rather than incidental.
+    if WEB_DIR.is_dir():
+        app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+
     return app
 
 
