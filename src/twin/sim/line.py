@@ -122,6 +122,9 @@ class Line:
         # own stream, so adding/removing a variant does not perturb station
         # cycle-time draws (Common Random Numbers discipline, see rng.py).
         self._variant_rng = np.random.default_rng(config.seed + 10_000)
+        # Separate stream for arrivals -- see _source()'s docstring for why
+        # this exists at all.
+        self._arrival_rng = np.random.default_rng(config.seed + 20_000)
 
         buffers: dict[str, simpy.Store] = {
             sid: simpy.Store(env, capacity=config.buffer_capacity_of[sid])
@@ -195,15 +198,40 @@ class Line:
         return str(self.config.variants[idx]["id"])
 
     def _source(self):
-        """Feeds units into the first station's buffer as fast as it accepts
-        them. Arrival is not the bottleneck of interest here -- the buffers and
-        station cycle times are.
+        """Feeds units into the first station's buffer at a realistic pace,
+        not instantly.
+
+        REAL BUG, found during Phase 5: an earlier version of this method fed
+        S01 as fast as its buffer would accept units -- effectively an
+        infinite, instantaneous upstream supply. That made S01's input queue
+        sit permanently near-full (5.99/6 measured) regardless of anything
+        downstream, which is not "S01 is a bottleneck" -- it is an artifact of
+        an unrealistic source. It silently corrupted TWO of Phase 5's six
+        detectors: the Queue Length method always picked S01 (100% across 5
+        seeds, for exactly this reason), and even the production momentary
+        Active Period Method split its pick between S01 and the true
+        bottleneck S17 roughly 54%/45% across 80 samples of a normal run,
+        because an artificially-never-starved S01 accumulates long active
+        periods just like a genuine bottleneck does.
+
+        Fixed: arrivals are paced with the same lognormal sampling used
+        everywhere else in this line, at the first zone's own (mean, cv) --
+        modelling an upstream supply process with its own natural variability,
+        rather than an unconstrained tap. `synthetic -- uncalibrated`, same as
+        every other timing parameter in this project; what would calibrate it
+        is the arrival-rate distribution of the actual upstream process (parts
+        kitting, prior line segment, etc.), which this project does not have.
         """
+        first_station = self.config.station_ids[0]
+        arrival_mean = self.config.base_cycle_time_of[first_station]
+        arrival_cv = self.config.cv_of[first_station]
+
         while True:
             variant = self._pick_variant()
             part = _Part(unit_id=self._next_unit_id, variant=variant)
             self._next_unit_id += 1
             yield self._source_buf.put(part)
+            yield self.env.timeout(sample_cycle_time(self._arrival_rng, arrival_mean, arrival_cv))
 
     def time_in_state(self, station_id: str) -> dict[StationState, float]:
         return dict(self.stations[station_id].time_in_state)

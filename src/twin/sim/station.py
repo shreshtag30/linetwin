@@ -133,6 +133,15 @@ class Station:
         self.state = new_state
         self._state_since = now
 
+    @property
+    def active_period_start(self) -> float | None:
+        """Sim time the current in-progress active period began, or None if
+        the station is not currently active. Public so the diagnostic layer's
+        momentary Active Period Method (diagnostic/bottleneck.py) can read it
+        without reaching into a private attribute.
+        """
+        return self._active_period_start
+
     def finalize_active_period(self) -> None:
         """Close any in-progress active period at the current sim time, so a
         test or metric computed mid-active-period doesn't undercount it.

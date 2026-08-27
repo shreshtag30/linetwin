@@ -25,6 +25,11 @@ dependencies = [
     # layer needs scipy.stats. scikit-learn happens to pull scipy today, but a
     # transitive dependency is not a contract.
     "scipy>=1.14",
+    # Verified NOT transitively available (checked directly: ModuleNotFoundError
+    # from a clean `uv sync`). Tukey-Kramer's studentized-range critical values
+    # are the kind of thing worth getting from a maintained library rather than
+    # hand-rolling, given how easy that distribution is to get subtly wrong.
+    "statsmodels>=0.14",
     "pyyaml>=6.0",
     "typer>=0.15",
     # NOTE: sse-starlette is deliberately ABSENT. The Phase 2 spike established
