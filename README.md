@@ -108,8 +108,6 @@ linked documents:
 - **`docs/LIMITATIONS.md`** — every known limitation in one place, including the ones a demo would
   usually prefer to leave out (the degradation curve is not graceful; Model B's features don't yet
   consume Phase 9's inferred values; the leadership ROI is an estimate, not an audited saving).
-- **`docs/INTERVIEW.md`** — anticipated judge questions with the honest answer, not the convenient
-  one.
 - **`docs/adr/`** — four architecture decision records (simulation core, transport, ML data
   provenance, sensor gap), each stating the alternative considered and why it lost.
 
@@ -141,10 +139,8 @@ against `LineConfig`, not against any specific station count.
 | `docs/PRIOR_ART.md` | Position on US 12,353,197 B2 (Accenture) and mandatory citation discipline |
 | `docs/DATA.md` | Model B's label-generating process, published before any metric |
 | `docs/LIMITATIONS.md` | Every known limitation, named plainly, in one place |
-| `docs/INTERVIEW.md` | Anticipated judge questions, answered honestly |
 | `docs/adr/` | Four architecture decision records |
-| `docs/phases/` | Per-phase build record, one markdown + PDF per phase |
-| `docs/tracker.html` | Live build progress |
+| `docs/phases/` | Per-phase build record, one markdown file per phase |
 
 ## Licence
 

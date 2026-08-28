@@ -12,3 +12,8 @@ node_modules/
 # in git history. ml/models/ (the small, trained artifacts the live scorer
 # actually loads at runtime) IS committed -- see tools/train_station_risk.py.
 ml/data/
+
+# For the user's own local tracking, not for the repo/submission.
+docs/phases/*.pdf
+docs/tracker.html
+docs/INTERVIEW.md
