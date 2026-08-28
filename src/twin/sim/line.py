@@ -6,14 +6,17 @@ a different station count or topology is a new YAML file, not new code
 never `Container` -- Container carries no per-unit identity, which would make
 Phase 9's defect genealogy impossible.
 
-NOTE on transfer_delay_s: this build connects stations directly via a shared
-Store, with no separate conveyor-transit process. transfer_delay_s on every
-UnitEvent is therefore always 0.0 here. Phase 9's genealogy realignment
-(contributing factors compared at detection time minus cumulative transfer
-delay) needs a NONZERO delay to demonstrate correcting for something real; that
-synthetic per-link transit time is introduced in Phase 9, not invented here
-just to make this field non-trivial. Recorded so it is not mistaken for an
-oversight later.
+NOTE on transfer_delay_s (Phase 9): stations still connect directly via a
+shared Store, with no separate conveyor-transit process affecting simulation
+timing -- only `UnitEvent.transfer_delay_s` carries a nonzero value now,
+a fixed, documented, synthetic per-link constant (`CONVEYOR_TRANSFER_DELAY_S`
+below), recorded as metadata for `diagnostic/genealogy.py`'s transfer-delay
+realignment to have something real to correct for. It is deliberately NOT fed
+back into `env.timeout()` anywhere: introducing an actual conveyor-transit
+delay would change cascade timing throughout the line, which is exactly the
+kind of scope creep this project's phase boundaries exist to prevent -- this
+field's purpose is to make genealogy's realignment math meaningful, not to
+model conveyor transit as a simulated process.
 """
 
 from __future__ import annotations
@@ -30,6 +33,11 @@ from twin.contracts import StationState, UnitEvent, Zone
 from twin.sim.dists import sample_cycle_time
 from twin.sim.rng import make_station_generators
 from twin.sim.station import Station
+
+# Synthetic, fixed, metadata-only -- see the module docstring's note on
+# transfer_delay_s. `synthetic -- uncalibrated`, same discipline as every
+# other timing parameter in this project (docs/CITATIONS.md).
+CONVEYOR_TRANSFER_DELAY_S = 4.0
 
 
 @dataclass
@@ -161,7 +169,13 @@ class Line:
                 live_mult = self._live_multiplier[_sid]
                 return sample_cycle_time(_rng, _mean * live_mult * variant_mult, _cv)
 
-            def make_on_departure(_sid: str, _zone: Zone):
+            def make_on_departure(_sid: str, _zone: Zone, _is_last: bool = is_last):
+                # No next station to transfer to from the last one -- 0.0 is
+                # the correct value there, not a shortcut (see module
+                # docstring: every OTHER station carries the fixed synthetic
+                # conveyor delay).
+                delay = 0.0 if _is_last else CONVEYOR_TRANSFER_DELAY_S
+
                 def _on_departure(
                     part: object, entered_at: float, exited_at: float, cycle_time: float
                 ) -> None:
@@ -175,7 +189,7 @@ class Line:
                             entered_at=entered_at,
                             exited_at=exited_at,
                             cycle_time_s=cycle_time,
-                            transfer_delay_s=0.0,  # see module docstring
+                            transfer_delay_s=delay,
                             state_at_exit=StationState.WORKING,
                             risk_at_exit=None,  # risk layer does not exist until Phase 8
                         )

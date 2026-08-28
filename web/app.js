@@ -142,8 +142,18 @@ function renderStationCard(st, isBottleneck) {
   // failure mode -- presenting an estimate/absence as a measurement -- this
   // project's provenance tagging exists to prevent. `source` is only a
   // meaningful thing to show once `missingness === "present"`.
-  const tagLabel = ct.missingness !== "present" ? ct.missingness : ct.source;
-  const sourceTag = `<span class="confidence-pill" data-source="${tagLabel}">${tagLabel}</span>`;
+  let tagLabel;
+  if (ct.missingness !== "present") {
+    tagLabel = ct.missingness;
+  } else if (ct.source === "inferred" && ct.sensor_share !== null) {
+    // The committed pill copy (docs/DECISIONS.md): the exact evidence-
+    // attribution percentage from the harmonic extension's partition of
+    // unity, not a decorative label -- zero tuning parameters behind it.
+    tagLabel = `inferred — ${Math.round(ct.sensor_share * 100)}%`;
+  } else {
+    tagLabel = ct.source;
+  }
+  const sourceTag = `<span class="confidence-pill" data-source="${ct.source}">${tagLabel}</span>`;
 
   card.innerHTML = `
     <div class="st-id">${st.station_id}</div>

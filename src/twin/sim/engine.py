@@ -39,6 +39,7 @@ from twin.contracts import (
     ValueSource,
 )
 from twin.diagnostic.bottleneck import StationView, diagnose
+from twin.graph.inference import InferenceResult, harmonic_extension
 from twin.risk.features import FeatureExtractor
 from twin.risk.scorer import ModelNotTrainedError, StationRiskScorer
 from twin.sim.line import Line, LineConfig
@@ -113,6 +114,7 @@ class Engine:
         # every `_ticks_per_risk_score` ticks; a snapshot in between reuses
         # the last computed value, with `risk_updated_tick` showing its age.
         self._risk_cache: dict[str, tuple[TaggedValue, list[RiskDriver], int]] = {}
+        self._last_inference: dict[str, InferenceResult] = {}
         self.tick = 0
         self.seq = 0
         self.status: str = "running"
@@ -190,6 +192,7 @@ class Engine:
             self._feature_extractor.sample_tick(self.line.stations)
             if self._risk_scorer is not None and self.tick % self._ticks_per_risk_score == 0:
                 self._update_risk_scores()
+            self._compute_inference()
 
             assert self._t0 is not None
             target = self._t0 + self.tick * REAL_DT
@@ -238,6 +241,36 @@ class Engine:
             self._feature_extractor.update_risk_ewma(sid, tagged.value)
             self._risk_cache[sid] = (tagged, drivers, self.tick)
 
+    def _compute_inference(self) -> None:
+        """Harmonic extension over the 8 uninstrumented stations, run once
+        per tick (a 30x30 linear solve; measured well under a millisecond,
+        no `to_thread` needed -- see the Tukey-Kramer / risk-scoring
+        precedents above for when that call is and isn't warranted).
+
+        `observed_values` uses each instrumented station's last completed
+        cycle time, or its own zone's base cycle time as a fallback before
+        that station has completed anything yet -- a station that has not
+        produced a real reading is not meaningfully different from one with
+        no sensor at all, for this one tick.
+        """
+        observed: dict[str, float] = {}
+        prior: dict[str, float] = {}
+        for sid in self.config.station_ids:
+            zone_base = self.config.base_cycle_time_of[sid]
+            if sid in self.config.instrumented_stations:
+                station = self.line.stations[sid]
+                observed[sid] = station.last_cycle_time_s or zone_base
+            else:
+                prior[sid] = zone_base
+
+        results = harmonic_extension(
+            self.config.station_ids,
+            self.config.dark_stations,
+            observed,
+            prior,
+        )
+        self._last_inference = {r.station_id: r for r in results}
+
     def _station_snapshot(self, station_id: str) -> StationSnapshot:
         station = self.line.stations[station_id]
         instrumented = station_id in self.config.instrumented_stations
@@ -253,20 +286,34 @@ class Engine:
                 sensor_share=None,
             )
         else:
-            # Honest, not fabricated: Phase 9 has not been built yet, so there
-            # is no inference model to produce an estimate. Reporting a
-            # plausible-looking number here -- even the simulation's own true
-            # value -- would defeat the entire premise of a sensor gap. Until
-            # Phase 9's harmonic extension exists, a dark station's value is
-            # simply MISSING, not INFERRED.
-            cycle_time = TaggedValue(
-                value=None,
-                source=ValueSource.OBSERVED,
-                missingness=Missingness.MISSING,
-                confidence=0.0,
-                staleness_s=self.env.now,
-                sensor_share=None,
-            )
+            inferred = self._last_inference.get(station_id)
+            if inferred is not None:
+                cycle_time = TaggedValue(
+                    value=inferred.value,
+                    source=ValueSource.INFERRED,
+                    missingness=Missingness.PRESENT,
+                    # sensor_share IS the confidence, directly -- it is
+                    # already an honest [0,1] measure with zero tuning
+                    # parameters (graph/inference.py's module docstring);
+                    # inventing a separate rescaled "confidence" would just
+                    # add an unexplained transform on top of an already-exact
+                    # quantity.
+                    confidence=inferred.sensor_share,
+                    staleness_s=0.0,
+                    sensor_share=inferred.sensor_share,
+                )
+            else:
+                # Only reachable before the first inference pass has run at
+                # all (e.g. the very first tick) -- honest MISSING, not a
+                # fabricated placeholder, for that brief window.
+                cycle_time = TaggedValue(
+                    value=None,
+                    source=ValueSource.OBSERVED,
+                    missingness=Missingness.MISSING,
+                    confidence=0.0,
+                    staleness_s=self.env.now,
+                    sensor_share=None,
+                )
 
         total_time = sum(station.time_in_state.values())
         throughput = (3600.0 / station.last_cycle_time_s) if station.last_cycle_time_s else 0.0

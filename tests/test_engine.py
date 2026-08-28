@@ -153,9 +153,13 @@ async def test_restart_recovers_a_faulted_engine(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dark_stations_report_missing_not_a_fabricated_estimate() -> None:
-    """Phase 9 has not been built yet -- a dark station's cycle_time_s must
-    honestly be MISSING, never a plausible-looking invented number.
+async def test_dark_stations_report_inferred_with_an_honest_confidence() -> None:
+    """Superseded by Phase 9: before the harmonic-extension inference layer
+    existed, a dark station's cycle_time_s was honestly reported MISSING
+    (never a plausible-looking fabricated number). Now that Phase 9's
+    graph/inference.py is wired in, the correct behavior is INFERRED with
+    `sensor_share` as the honest, zero-tuning-parameter confidence -- still
+    never presented as OBSERVED, and never a bare number with no provenance.
     """
     engine = Engine(SCENARIO, seed=1)
     await _run_briefly(engine, 0.5)
@@ -165,9 +169,11 @@ async def test_dark_stations_report_missing_not_a_fabricated_estimate() -> None:
     dark = [s for s in snap.stations if not s.instrumented]
     assert len(dark) == 8
     for station in dark:
-        assert station.cycle_time_s.value is None
-        assert station.cycle_time_s.missingness.value == "missing"
-        assert station.cycle_time_s.confidence == 0.0
+        assert station.cycle_time_s.value is not None
+        assert station.cycle_time_s.source.value == "inferred"
+        assert station.cycle_time_s.missingness.value == "present"
+        assert 0.0 <= station.cycle_time_s.confidence <= 1.0
+        assert station.cycle_time_s.sensor_share == station.cycle_time_s.confidence
 
 
 class TestConflationBus:

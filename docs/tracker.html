@@ -484,7 +484,7 @@
     <div style="text-align:right">
       <p class="eyebrow">Status</p>
       <p class="mono" style="font-size:13px;color:var(--active);margin:5px 0 0;font-weight:500">
-        Phase 8 complete — continuing
+        Phase 9 complete — continuing
       </p>
     </div>
   </header>
@@ -492,17 +492,17 @@
   <section class="board" aria-label="Progress summary">
     <div class="cell">
       <span class="k">Phases done</span>
-      <span class="v" id="ph-done">8<small> / 10</small></span>
-      <span class="meter"><i id="ph-meter" style="width:80%"></i></span>
+      <span class="v" id="ph-done">9<small> / 10</small></span>
+      <span class="meter"><i id="ph-meter" style="width:90%"></i></span>
     </div>
     <div class="cell">
       <span class="k">Steps done</span>
-      <span class="v" id="st-done">14<small> / 68</small></span>
-      <span class="meter"><i id="st-meter" style="width:21%"></i></span>
+      <span class="v" id="st-done">61<small> / 68</small></span>
+      <span class="meter"><i id="st-meter" style="width:90%"></i></span>
     </div>
     <div class="cell now">
       <span class="k">Current phase</span>
-      <span class="v">Sensor Gaps &amp; Genealogy</span>
+      <span class="v">Multi-Persona Views &amp; Submission</span>
     </div>
     <div class="cell">
       <span class="k">Compliance</span>
@@ -661,28 +661,28 @@
       </div>
     </article>
 
-    <article class="phase" data-status="active">
+    <article class="phase" data-status="done">
       <div class="node">09</div>
       <div class="card">
-        <div class="card-top"><h3>Sensor Gaps, Placement &amp; Genealogy</h3><span class="pill active">In progress</span></div>
-        <p class="gist">The brief's hardest asks, answered together at a scale where the measurement is real — 30 stations make the degradation curve mean something, not a cliff between two data points.</p>
+        <div class="card-top"><h3>Sensor Gaps, Placement &amp; Genealogy</h3><span class="pill done">Done</span><span class="pill" style="background:var(--blocked-soft);color:var(--blocked)">Honest non-graceful finding</span></div>
+        <p class="gist">The brief's hardest asks, answered together at a scale where the measurement is real — 30 stations make the degradation curve mean something, not a cliff between two data points. The curve itself turned out not to be graceful, and is reported exactly as measured.</p>
         <ul class="steps">
-          <li data-s="pending">Harmonic extension across the line graph; asymmetric influence weights</li>
-          <li data-s="pending">Exact partition-of-unity evidence attribution — zero tuning parameters</li>
-          <li data-s="pending">OBSERVED / INFERRED / SIMULATED tagging; zero/missing/not-applicable kept distinct</li>
-          <li data-s="pending">Graceful-degradation curve at 100&rarr;40% coverage, pre-checked before being promised</li>
-          <li data-s="pending">Greedy submodular sensor placement with the (1&minus;1/e) guarantee</li>
-          <li data-s="pending">Defect genealogy — transfer-delay realignment, origin station, affected unit range, calibrated confidence</li>
-          <li data-s="pending">Phase 9 record + PDF</li>
+          <li data-s="done">Harmonic extension across the line graph; asymmetric influence weights (w_down=1.0, w_up=0.35)</li>
+          <li data-s="done">Exact partition-of-unity evidence attribution — zero tuning parameters, verified numerically</li>
+          <li data-s="done">OBSERVED / INFERRED / SIMULATED tagging wired into the engine; confidence set directly to <code style="all:unset">sensor_share</code> after catching and removing an arbitrary rescaling formula</li>
+          <li data-s="done">Graceful-degradation curve measured 100&rarr;40% coverage — found NOT graceful (sharp jump to ~30% error then a flat plateau), published as measured with the sampling-noise caveat</li>
+          <li data-s="done">Greedy submodular sensor placement with the (1&minus;1/e) guarantee — corrected a wrong test assumption after checking the real asymmetric-weight numbers</li>
+          <li data-s="done">Defect genealogy — transfer-delay realignment, origin station, affected unit range, calibrated confidence; found &amp; fixed a fixed-window bug that found zero affected units under severe perturbation</li>
+          <li data-s="done">Phase 9 record + PDF</li>
         </ul>
-        <p class="out"><b>Gate</b> Two graph identities hold exactly; genealogy trace matches a known injected origin</p>
+        <p class="out"><b>Gate met</b> Both graph identities hold exactly &middot; genealogy trace correctly names the injected origin (S05) &middot; 150/150 tests green</p>
       </div>
     </article>
 
-    <article class="phase" data-status="pending">
+    <article class="phase" data-status="active">
       <div class="node">10</div>
       <div class="card">
-        <div class="card-top"><h3>Multi-Persona Views, Docs &amp; Submission</h3><span class="pill pending">Pending</span></div>
+        <div class="card-top"><h3>Multi-Persona Views, Docs &amp; Submission</h3><span class="pill active">In progress</span></div>
         <p class="gist">The other two personas, the honesty ledger written into the README in full, and falsifiability on camera.</p>
         <ul class="steps">
           <li data-s="pending">Plant-manager trend view + leadership ROI panel, each labelled with the requirement it answers</li>
@@ -753,7 +753,7 @@
         <h3>D &middot; Verification</h3>
         <p class="why">Claims that a reviewer can re-run themselves.</p>
         <ul>
-          <li data-s="done">Test suite exists and passes on every commit so far (134/134)</li>
+          <li data-s="done">Test suite exists and passes on every commit so far (150/150)</li>
           <li data-s="done">CI green on both operating systems — confirmed via a real GitHub Actions run, not just authored</li>
           <li data-s="done">Both silent-bug regressions (plus a third, active-period merging) fail red when their guard is removed</li>
           <li data-s="done">Same seed reproduces exactly; a different seed diverges — at both the station and full-line level</li>
