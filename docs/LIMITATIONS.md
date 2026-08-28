@@ -82,6 +82,13 @@ leadership view's own panel copy says so directly rather than only in this docum
 ## CI and deployment
 
 Windows CI is run and green, but is **non-blocking for demo readiness** — ubuntu is the actual
-deploy target, and a Windows-only failure would not gate a phase. See the deployment section of the
-Phase 10 record for whether a hosted instance is live and, if not, exactly which platform
-constraint ruled it out.
+deploy target, and a Windows-only failure would not gate a phase.
+
+**No hosted deployment was attempted.** Standing up a hosted instance (Render or equivalent) needs
+a new external account and an outbound push to a third-party platform — both are exactly the kind
+of action this project treats as requiring the user's explicit sign-off first, not something to do
+unilaterally. The verified path is the local one in the README's quickstart (`tools/run_server.py`),
+which is what every live-verification claim in this project's phase records was actually checked
+against. If a hosted demo is wanted for judging, it needs that sign-off and an account, at which
+point `SIM_DT=30`/`REAL_DT=0.5` (2 ticks/s) is the config already built for a throttled shared CPU
+(`src/twin/contracts.py`'s own comment on `SIM_DT`/`REAL_DT`).
