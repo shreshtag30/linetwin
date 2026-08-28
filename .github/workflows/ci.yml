@@ -39,6 +39,18 @@ jobs:
       - name: Regenerate fixture (determinism check)
         run: uv run python tools/gen_fixture.py
 
+      - name: Generate Model B training data
+        # Deliberately NOT committing the 17MB output CSV -- regenerated
+        # fresh here on every run instead (a few seconds, no network access
+        # needed, unlike ml/benchmark_public.py which is not run in CI for
+        # exactly that reason). Without this step, test_no_config_leak.py
+        # and most of test_scorer.py would silently skip in CI rather than
+        # actually run.
+        run: uv run python tools/generate_training_data.py
+
+      - name: Train Model B
+        run: uv run python tools/train_station_risk.py
+
       - name: Test
         run: uv run pytest -v
 

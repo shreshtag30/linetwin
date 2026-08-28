@@ -31,6 +31,7 @@ from twin.contracts import (
     SIM_DT,
     ControlCommand,
     Missingness,
+    RiskDriver,
     RunMeta,
     Snapshot,
     StationSnapshot,
@@ -38,9 +39,12 @@ from twin.contracts import (
     ValueSource,
 )
 from twin.diagnostic.bottleneck import StationView, diagnose
+from twin.risk.features import FeatureExtractor
+from twin.risk.scorer import ModelNotTrainedError, StationRiskScorer
 from twin.sim.line import Line, LineConfig
 
 RELAG_TICKS = 5  # ticks of lag before re-anchoring rather than trying to catch up
+RISK_SCORE_HZ = 1.0  # docs/DATA.md / phase-08 plan: Model B runs at 1Hz regardless of tick rate
 
 
 class ConflationBus:
@@ -81,6 +85,18 @@ class Engine:
         self._restart_requested = False
         self._stopped = False
         self.run_meta: RunMeta | None = None
+
+        # Optional: Model B needs ml/models/ populated (tools/generate_training_
+        # data.py then tools/train_station_risk.py). Absence is not fatal --
+        # the twin still runs fully without live risk scoring, it just omits
+        # `defect_risk`/`risk_drivers` from every snapshot (already their
+        # documented defaults in contracts.py).
+        try:
+            self._risk_scorer: StationRiskScorer | None = StationRiskScorer()
+        except ModelNotTrainedError:
+            self._risk_scorer = None
+
+        self._ticks_per_risk_score = max(1, round(1.0 / REAL_DT / RISK_SCORE_HZ))
         self._reset(initial=True)
 
     def _reset(self, *, initial: bool = False) -> None:
@@ -90,6 +106,13 @@ class Engine:
         self.config = config
         self.env = simpy.Environment()
         self.line = Line(self.env, config)
+        self._feature_extractor = FeatureExtractor(
+            config.station_ids, config.buffer_capacity_of, sample_dt=SIM_DT
+        )
+        # (TaggedValue, drivers, tick computed) per station -- refreshed only
+        # every `_ticks_per_risk_score` ticks; a snapshot in between reuses
+        # the last computed value, with `risk_updated_tick` showing its age.
+        self._risk_cache: dict[str, tuple[TaggedValue, list[RiskDriver], int]] = {}
         self.tick = 0
         self.seq = 0
         self.status: str = "running"
@@ -164,6 +187,10 @@ class Engine:
                 continue
             tick_compute_ms = (loop.time() - compute_start) * 1000.0
 
+            self._feature_extractor.sample_tick(self.line.stations)
+            if self._risk_scorer is not None and self.tick % self._ticks_per_risk_score == 0:
+                self._update_risk_scores()
+
             assert self._t0 is not None
             target = self._t0 + self.tick * REAL_DT
             now = loop.time()
@@ -188,6 +215,28 @@ class Engine:
                 tick_compute_ms=tick_compute_ms,
                 real_time_factor=real_time_factor,
             )
+
+    def _update_risk_scores(self) -> None:
+        """Model B at ~1Hz (RISK_SCORE_HZ), regardless of tick rate. Called
+        directly, not via `asyncio.to_thread`: a 5-feature XGBoost + isotonic
+        predict is a microsecond-scale operation, where `to_thread`'s own
+        dispatch overhead would dominate and thread offload would be the
+        wrong call -- see engine.py's `diagnose()` call above for the
+        opposite case (Phase 7), where offloading was necessary because that
+        computation's cost is unbounded.
+
+        Stations are scored in LINE ORDER, not station_ids' incidental order
+        (they are the same here, but this is asserted, not assumed): each
+        station's `upstream_risk_ewma` feature must reflect its immediate
+        upstream neighbor's score from the SAME scoring pass, not a stale one.
+        """
+        assert self._risk_scorer is not None
+        for i, sid in enumerate(self.config.station_ids):
+            upstream = self.config.station_ids[i - 1] if i > 0 else None
+            feats = self._feature_extractor.features_for(sid, self.line.stations[sid], upstream)
+            tagged, drivers = self._risk_scorer.score(feats)
+            self._feature_extractor.update_risk_ewma(sid, tagged.value)
+            self._risk_cache[sid] = (tagged, drivers, self.tick)
 
     def _station_snapshot(self, station_id: str) -> StationSnapshot:
         station = self.line.stations[station_id]
@@ -222,6 +271,11 @@ class Engine:
         total_time = sum(station.time_in_state.values())
         throughput = (3600.0 / station.last_cycle_time_s) if station.last_cycle_time_s else 0.0
 
+        cached = self._risk_cache.get(station_id)
+        defect_risk = cached[0] if cached else None
+        risk_drivers = cached[1] if cached else []
+        risk_updated_tick = cached[2] if cached else None
+
         return StationSnapshot(
             station_id=station_id,
             zone=self.config.zone_of[station_id],
@@ -232,9 +286,9 @@ class Engine:
             cycle_time_s=cycle_time,
             throughput_uph=throughput,
             units_completed=station.units_completed,
-            defect_risk=None,  # Phase 8
-            risk_drivers=[],  # Phase 8
-            risk_updated_tick=None,  # Phase 8
+            defect_risk=defect_risk,
+            risk_drivers=risk_drivers,
+            risk_updated_tick=risk_updated_tick,
             time_in_state=(
                 {s: t / total_time for s, t in station.time_in_state.items()} if total_time else {}
             ),

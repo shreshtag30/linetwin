@@ -1,0 +1,13 @@
+{
+  "evaluated_on": "config E (UNSEEN)",
+  "model": {
+    "pr_auc": 0.026399179397287875,
+    "roc_auc": 0.8271497530309834,
+    "mcc_at_threshold": 0.0884685894084957,
+    "threshold": 0.02
+  },
+  "single_feature_baseline_cycle_time_z": {
+    "pr_auc": 0.018239228703696795
+  },
+  "lift_over_baseline_pct": 44.73846359488431
+}

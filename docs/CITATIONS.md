@@ -164,7 +164,10 @@ this is stronger than waiting to be asked whether the pattern is sound.
 
 **AI4I 2020 Predictive Maintenance Dataset.** UCI ML Repository id 601, 10,000 rows, CC BY 4.0.
 *Used for:* the offline benchmark model (Model A). Label column is `Machine failure` — 339 positives,
-3.39 %. Note the known inconsistency: the individual failure-mode columns sum to 433, not 339.
+3.39 %. Note the known inconsistency: the individual failure-mode columns (TWF 46 + HDF 115 + PWF 95 +
+OSF 98 + RNF 19) sum to **373**, not 339 — verified directly via `fetch_ucirepo(id=601)` in Phase 8
+(an earlier draft of this ledger asserted 433 here, unverified against the actual fetched data; corrected
+to the true, checked figure rather than carried forward).
 
 **Bosch Production Line Performance.** Kaggle, 2016.
 *Used for:* **one published statistic only** — the ~0.58 % defect prevalence, as the calibration target
@@ -227,7 +230,7 @@ appears — including in slides we hand to teammates.
 | Defect base rate | *Calibrated to* Bosch's published prevalence — **not trained on it** |
 | Every Model B metric | Always carries `"evaluated_on": "config E (UNSEEN)"` |
 | PR-AUC headline | Published beside the single-feature `cycle_time_z` logistic baseline, whatever the lift. If lift is small, the honest reframe is published instead |
-| MCC | **Always printed with its threshold.** Note: MCC for a constant classifier is undefined (0/0); scikit-learn returns 0.0 with a warning. State this explicitly — a statistician will check it |
+| MCC | **Always printed with its threshold.** Note: MCC for a constant classifier is undefined (0/0); scikit-learn returns 0.0. State this explicitly — a statistician will check it. **Verified in Phase 8** (`ml/benchmark_public.py`, `sklearn` as pinned in this project): no warning is actually raised for this case in the installed version — an earlier draft of this row assumed one is; corrected to what was actually observed rather than left as an unverified assumption |
 | Accuracy | Appears exactly **once** in the whole repository: in the sentence explaining why it is never reported |
 | Brier score + reliability curve | Reported alongside discrimination metrics, because calibration is the part that governs false-alarm trust |
 | Ablation / inference errors | Measured against **our own** `oracle_risk`, and said so |

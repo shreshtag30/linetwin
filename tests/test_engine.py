@@ -276,3 +276,27 @@ async def test_a_slow_diagnose_does_not_block_the_event_loop(monkeypatch) -> Non
         f"canary only ticked {canary_ticks} times in 0.6s -- the event loop was blocked, "
         "meaning diagnose() is no longer running in a thread"
     )
+
+
+@pytest.mark.asyncio
+async def test_risk_scores_populate_at_the_configured_cadence() -> None:
+    from twin.risk.scorer import MODELS_DIR
+
+    if not (MODELS_DIR / "station_risk_booster.json").exists():
+        pytest.skip("ml/models/ not populated -- run tools/train_station_risk.py first")
+
+    engine = Engine(SCENARIO, seed=1)
+    assert engine._risk_scorer is not None
+    await _run_briefly(engine, 2.0)
+
+    snap = engine.bus.latest
+    assert snap is not None
+    for station in snap.stations:
+        assert station.defect_risk is not None
+        assert 0.0 <= station.defect_risk.value <= 1.0
+        assert len(station.risk_drivers) == 2
+        assert station.risk_updated_tick is not None
+        # Refreshed only every `_ticks_per_risk_score` ticks -- must be
+        # recent, but not necessarily equal to the current tick.
+        assert station.risk_updated_tick <= snap.tick
+        assert snap.tick - station.risk_updated_tick < engine._ticks_per_risk_score

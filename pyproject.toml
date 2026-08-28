@@ -44,6 +44,10 @@ ml = [
     "pandas>=2.2",
     "ucimlrepo>=0.0.7",
     "matplotlib>=3.10",
+    # For the DELIBERATE SMOTE failure case in ml/benchmark_public.py only.
+    # The live model (Model B) uses no resampling at all -- see docs/DATA.md
+    # and the original build brief's imbalance discipline.
+    "imbalanced-learn>=0.13",
 ]
 
 [dependency-groups]
