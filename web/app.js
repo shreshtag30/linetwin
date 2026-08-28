@@ -6,13 +6,31 @@
 
 const ZONE_ORDER = ["body", "paint", "final"];
 const HISTORY_LEN = 120; // ~15s of ticks at 8Hz -- enough to see a trend, not a full run
+const PM_HISTORY_LEN = 600; // longer window for the plant-manager view -- a shift-length trend, not a live tick
+const PM_TIMELINE_MAX = 50;
 
 let es = null;
 let killed = false;
 let stationOrder = [];
 let throughputChart = null;
 let wipChart = null;
+let pmThroughputChart = null;
+let pmWipChart = null;
 const history = { ticks: [], throughput: [], wip: [] };
+const pmHistory = { ticks: [], throughput: [], wip: [] };
+
+// Plant-manager rolling state -- accumulated client-side from the same
+// stream the floor-supervisor view reads, per this project's "one
+// EventSource, no framework" discipline (app.js's own module docstring).
+// Resets on run_meta (a restart is a new session, not a continuation).
+let pmBottleneckCounts = {}; // station_id -> ticks observed as the live bottleneck
+let pmObservedTicks = 0;
+let pmLastBottleneckId = undefined; // undefined = not yet initialized this session
+const pmTimeline = []; // [{tick, from, to}], newest first
+
+// Leadership view state.
+let economicsConfig = null; // {qc_lag_units, rework_cost_delta_usd}, fetched once
+let ldBudgetFetchTimer = null;
 
 function $(id) { return document.getElementById(id); }
 
@@ -34,6 +52,15 @@ function connect() {
     history.ticks = [];
     history.throughput = [];
     history.wip = [];
+    pmHistory.ticks = [];
+    pmHistory.throughput = [];
+    pmHistory.wip = [];
+    pmBottleneckCounts = {};
+    pmObservedTicks = 0;
+    pmLastBottleneckId = undefined;
+    pmTimeline.length = 0;
+    renderFrequency();
+    renderTimeline();
   });
 
   es.addEventListener("snapshot", (e) => {
@@ -62,6 +89,9 @@ function renderSnapshot(snap) {
   renderStations(snap.stations, snap.bottleneck);
   pushHistory(snap);
   drawCharts();
+
+  updatePlantManager(snap);
+  updateLeadership(snap);
 
   if (stationOrder.length === 0) {
     stationOrder = snap.stations.map((s) => s.station_id);
@@ -254,6 +284,205 @@ function resumeStream() {
   connect();
 }
 
+/* ---------------------------------------------------------------------
+ * Plant-manager view: rolling-window aggregation of the SAME snapshot
+ * stream the floor-supervisor view reads -- no second connection, no
+ * server-side history buffer (contracts.py's Snapshot is deliberately
+ * stateless per tick; the rolling window is a client concern).
+ * ------------------------------------------------------------------- */
+
+function updatePlantManager(snap) {
+  const bn = snap.bottleneck;
+  const currentId = bn && bn.station_id ? bn.station_id : null;
+
+  if (currentId) {
+    pmBottleneckCounts[currentId] = (pmBottleneckCounts[currentId] || 0) + 1;
+    pmObservedTicks += 1;
+  }
+
+  if (pmLastBottleneckId === undefined) {
+    pmLastBottleneckId = currentId; // session start -- not a shift, just the initial state
+  } else if (currentId !== pmLastBottleneckId) {
+    pmTimeline.unshift({ tick: snap.tick, from: pmLastBottleneckId || "–", to: currentId || "–" });
+    if (pmTimeline.length > PM_TIMELINE_MAX) pmTimeline.length = PM_TIMELINE_MAX;
+    pmLastBottleneckId = currentId;
+  }
+
+  renderFrequency();
+  renderTimeline();
+  renderPredicted(snap.predicted_bottleneck, bn);
+  pushPmHistory(snap);
+  drawPmCharts();
+}
+
+function renderFrequency() {
+  const el = $("pm-frequency");
+  const entries = Object.entries(pmBottleneckCounts).sort((a, b) => b[1] - a[1]);
+  if (entries.length === 0 || pmObservedTicks === 0) {
+    el.innerHTML = '<p class="panel-sub">No bottleneck observed yet this session.</p>';
+    return;
+  }
+  el.innerHTML = "";
+  for (const [sid, count] of entries.slice(0, 12)) {
+    const pct = (count / pmObservedTicks) * 100;
+    const row = document.createElement("div");
+    row.className = "freq-row";
+    row.innerHTML = `
+      <span class="freq-id">${sid}</span>
+      <span class="freq-bar-track"><span class="freq-bar-fill" style="width:${pct.toFixed(1)}%"></span></span>
+      <span class="freq-pct">${pct.toFixed(1)}%</span>
+    `;
+    el.appendChild(row);
+  }
+}
+
+function renderPredicted(predicted, current) {
+  const stationEl = $("pm-predicted-station");
+  const explEl = $("pm-predicted-explanation");
+  const noteEl = $("pm-shift-note");
+
+  if (!predicted || !predicted.station_id) {
+    stationEl.textContent = "–";
+    explEl.textContent = "No forecast available yet — the first forecast completes shortly after startup (background task, ~1x/s).";
+    noteEl.textContent = "";
+    return;
+  }
+
+  stationEl.textContent = predicted.station_id;
+  explEl.textContent = predicted.explanation || "";
+
+  const currentId = current && current.station_id ? current.station_id : null;
+  if (predicted.station_id !== currentId) {
+    noteEl.textContent = `Forecast (next ~30 sim-min): bottleneck may shift from ${currentId || "none"} to ${predicted.station_id}.`;
+  } else {
+    noteEl.textContent = `Forecast agrees with the current live bottleneck — no shift predicted.`;
+  }
+}
+
+function renderTimeline() {
+  const el = $("pm-timeline");
+  if (pmTimeline.length === 0) {
+    el.innerHTML = '<p class="panel-sub">No bottleneck change observed yet this session.</p>';
+    return;
+  }
+  el.innerHTML = "";
+  for (const entry of pmTimeline) {
+    const row = document.createElement("div");
+    row.className = "timeline-row";
+    row.innerHTML = `<span class="t-tick">tick ${entry.tick}</span><span>${entry.from} → ${entry.to}</span>`;
+    el.appendChild(row);
+  }
+}
+
+function pushPmHistory(snap) {
+  pmHistory.ticks.push(snap.tick);
+  pmHistory.throughput.push(snap.line_throughput_uph);
+  pmHistory.wip.push(snap.wip);
+  if (pmHistory.ticks.length > PM_HISTORY_LEN) {
+    pmHistory.ticks.shift();
+    pmHistory.throughput.shift();
+    pmHistory.wip.shift();
+  }
+}
+
+function drawPmCharts() {
+  const throughputData = [pmHistory.ticks, pmHistory.throughput];
+  const wipData = [pmHistory.ticks, pmHistory.wip];
+
+  if (!pmThroughputChart) {
+    pmThroughputChart = new uPlot(
+      { width: 380, height: 160, series: [{}, { stroke: "#A100FF", width: 2 }], scales: { x: { time: false } } },
+      throughputData,
+      $("pm-chart-throughput")
+    );
+  } else {
+    pmThroughputChart.setData(throughputData);
+  }
+
+  if (!pmWipChart) {
+    pmWipChart = new uPlot(
+      { width: 380, height: 160, series: [{}, { stroke: "#E8590C", width: 2 }], scales: { x: { time: false } } },
+      wipData,
+      $("pm-chart-wip")
+    );
+  } else {
+    pmWipChart.setData(wipData);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Leadership view: ROI estimate (src/twin/economics.py, fetched once
+ * since its constants are static per-process) + Phase 9's sensor
+ * placement ranking (fetched on demand -- it depends on the current
+ * budget and each dark station's live sensor_share).
+ * ------------------------------------------------------------------- */
+
+async function loadEconomicsConfig() {
+  try {
+    const resp = await fetch("/api/twin/economics_config");
+    economicsConfig = await resp.json();
+    $("ld-qc-lag").textContent = economicsConfig.qc_lag_units.toFixed(0);
+  } catch {
+    // Leadership view degrades to "–" placeholders; the rest of the app
+    // (floor supervisor, control) does not depend on this endpoint.
+  }
+}
+
+function updateLeadership(snap) {
+  const risks = snap.stations
+    .map((s) => (s.defect_risk ? s.defect_risk.value : null))
+    .filter((v) => v !== null && v !== undefined);
+  const meanRisk = risks.length ? risks.reduce((a, b) => a + b, 0) / risks.length : null;
+
+  $("ld-mean-risk").textContent = meanRisk === null ? "no model" : meanRisk.toFixed(4);
+
+  if (economicsConfig && meanRisk !== null) {
+    const unitsAtRisk = meanRisk * economicsConfig.qc_lag_units;
+    const dollars = unitsAtRisk * economicsConfig.rework_cost_delta_usd;
+    $("ld-units-at-risk").textContent = unitsAtRisk.toFixed(2);
+    $("ld-dollars").textContent = `$${dollars.toFixed(0)}`;
+  }
+
+  const instrumented = snap.stations.filter((s) => s.instrumented).length;
+  $("ld-station-count").textContent = snap.stations.length;
+  $("ld-instrumented-count").textContent = instrumented;
+  $("ld-dark-count").textContent = snap.stations.length - instrumented;
+}
+
+async function fetchSensorPlacement() {
+  const budget = parseInt($("ld-budget").value, 10);
+  const el = $("ld-recommend");
+  try {
+    const resp = await fetch(`/api/twin/sensor_placement?budget=${budget}`);
+    const body = await resp.json();
+    el.innerHTML = "";
+    body.recommended_next.forEach((sid, i) => {
+      const row = document.createElement("div");
+      row.className = "freq-row";
+      row.innerHTML = `<span class="freq-id">#${i + 1}</span><span>${sid}</span>`;
+      el.appendChild(row);
+    });
+    if (body.recommended_next.length === 0) {
+      el.innerHTML = '<p class="panel-sub">Every station is already instrumented.</p>';
+    }
+  } catch {
+    el.innerHTML = '<p class="panel-sub">Could not load a recommendation.</p>';
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Persona tabs
+ * ------------------------------------------------------------------- */
+
+function switchView(viewId) {
+  for (const view of document.querySelectorAll(".persona-view")) {
+    view.hidden = view.id !== viewId;
+  }
+  for (const tab of document.querySelectorAll(".persona-tab")) {
+    tab.classList.toggle("is-active", tab.dataset.view === viewId);
+  }
+}
+
 async function restartEngine() {
   await fetch("/api/twin/restart", { method: "POST" });
   // The engine only emits a fresh run_meta to a NEWLY opened stream
@@ -272,4 +501,19 @@ $("btn-kill").addEventListener("click", killStream);
 $("btn-resume").addEventListener("click", resumeStream);
 $("btn-restart").addEventListener("click", restartEngine);
 
+for (const tab of document.querySelectorAll(".persona-tab")) {
+  tab.addEventListener("click", () => switchView(tab.dataset.view));
+}
+
+$("ld-budget").addEventListener("input", (e) => {
+  $("ld-budget-val").textContent = e.target.value;
+  // Debounced -- a slider drag fires many input events per second, and
+  // each one is a real HTTP request server-side (Phase 9's greedy
+  // placement re-solves per pick, not free).
+  clearTimeout(ldBudgetFetchTimer);
+  ldBudgetFetchTimer = setTimeout(fetchSensorPlacement, 250);
+});
+
+loadEconomicsConfig();
+fetchSensorPlacement();
 connect();

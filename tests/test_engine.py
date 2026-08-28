@@ -306,3 +306,43 @@ async def test_risk_scores_populate_at_the_configured_cadence() -> None:
         # recent, but not necessarily equal to the current tick.
         assert station.risk_updated_tick <= snap.tick
         assert snap.tick - station.risk_updated_tick < engine._ticks_per_risk_score
+
+
+@pytest.mark.asyncio
+async def test_predicted_bottleneck_populates_without_starving_the_tick_loop() -> None:
+    """Regression test for a real bug: an earlier version awaited
+    `fork_and_predict` inline in the tick loop (even via `asyncio.to_thread`),
+    which measured up to ~700ms early in a run (near-empty queues mean far
+    more discrete events over the same forecast horizon than once the line
+    settles into steady congestion) -- collapsing real_time_factor to ~0.6-0.7
+    because the tick loop itself was waiting on it, not just other coroutines.
+    Fixed by launching it as a background task the tick loop never awaits.
+    """
+    engine = Engine(SCENARIO, seed=1)
+    task = asyncio.create_task(engine.run())
+
+    for _ in range(100):
+        if engine._predicted_bottleneck is not None:
+            break
+        await asyncio.sleep(0.05)
+    assert engine._predicted_bottleneck is not None
+
+    snap = engine.bus.latest
+    assert snap is not None
+    assert snap.real_time_factor > 0.85
+
+    engine.stop()
+    await task
+    if engine._prediction_task is not None:
+        await engine._prediction_task
+
+
+@pytest.mark.asyncio
+async def test_sensor_placement_ranking_only_picks_dark_stations() -> None:
+    engine = Engine(SCENARIO, seed=1)
+    await _run_briefly(engine, 0.3)
+
+    ranking = engine.sensor_placement_ranking(budget=4)
+    assert len(ranking) == 4
+    assert set(ranking) <= engine.config.dark_stations
+    assert len(set(ranking)) == 4

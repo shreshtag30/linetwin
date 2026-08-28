@@ -29,6 +29,7 @@ import simpy
 from twin.contracts import (
     REAL_DT,
     SIM_DT,
+    BottleneckVerdict,
     ControlCommand,
     Missingness,
     RiskDriver,
@@ -39,13 +40,21 @@ from twin.contracts import (
     ValueSource,
 )
 from twin.diagnostic.bottleneck import StationView, diagnose
+from twin.diagnostic.rolling_horizon import fork_and_predict
 from twin.graph.inference import InferenceResult, harmonic_extension
+from twin.graph.placement import greedy_sensor_placement
 from twin.risk.features import FeatureExtractor
 from twin.risk.scorer import ModelNotTrainedError, StationRiskScorer
 from twin.sim.line import Line, LineConfig
 
 RELAG_TICKS = 5  # ticks of lag before re-anchoring rather than trying to catch up
 RISK_SCORE_HZ = 1.0  # docs/DATA.md / phase-08 plan: Model B runs at 1Hz regardless of tick rate
+# Rolling-horizon prediction (diagnostic/rolling_horizon.py), run as a
+# background task the tick loop never awaits -- see the REAL BUG note beside
+# `_prediction_task` below for why. Checked at this cadence for whether the
+# PREVIOUS forecast has finished and a new one should be started.
+PREDICTION_HZ = 1.0
+PREDICTION_HORIZON_S = 1800.0  # 30 sim-minutes forward, Ragazzini et al.'s tuning parameter T
 
 
 class ConflationBus:
@@ -98,6 +107,7 @@ class Engine:
             self._risk_scorer = None
 
         self._ticks_per_risk_score = max(1, round(1.0 / REAL_DT / RISK_SCORE_HZ))
+        self._ticks_per_prediction = max(1, round(1.0 / REAL_DT / PREDICTION_HZ))
         self._reset(initial=True)
 
     def _reset(self, *, initial: bool = False) -> None:
@@ -115,6 +125,14 @@ class Engine:
         # the last computed value, with `risk_updated_tick` showing its age.
         self._risk_cache: dict[str, tuple[TaggedValue, list[RiskDriver], int]] = {}
         self._last_inference: dict[str, InferenceResult] = {}
+        self._predicted_bottleneck: BottleneckVerdict | None = None
+        # Deliberately NOT awaited inline in the tick loop -- see the REAL BUG
+        # note where this task is created. A restart must not let a forecast
+        # started under the OLD run_id overwrite state under the new one;
+        # `_run_prediction` checks `run_id` before assigning, so an in-flight
+        # task is left to finish and self-discard rather than cancelled (a
+        # `to_thread` call cannot be interrupted mid-computation anyway).
+        self._prediction_task: asyncio.Task[None] | None = None
         self.tick = 0
         self.seq = 0
         self.status: str = "running"
@@ -193,6 +211,37 @@ class Engine:
             if self._risk_scorer is not None and self.tick % self._ticks_per_risk_score == 0:
                 self._update_risk_scores()
             self._compute_inference()
+            if (
+                self.tick % self._ticks_per_prediction == 0
+                and (self._prediction_task is None or self._prediction_task.done())
+            ):
+                # REAL BUG, found by running the tick-timing test: awaiting
+                # `fork_and_predict` inline -- even via `asyncio.to_thread` --
+                # measured at 5-10ms once the line had settled into steady-
+                # state congestion, but ~700ms EARLY in a run, when queues are
+                # near-empty and 1800 forecast sim-seconds of mostly WORKING
+                # stations means simpy actually processes far more discrete
+                # events than the same wall-clock horizon does once stations
+                # are mostly BLOCKED/STARVED (few events, because nothing is
+                # happening). Awaiting even the threaded call inline still
+                # delays THIS tick's own publish by however long the fork
+                # takes, which is exactly what blew real_time_factor down to
+                # ~0.6-0.7 -- to_thread only protects OTHER coroutines
+                # (HTTP handlers) from blocking, not the tick loop that is
+                # itself awaiting it.
+                #
+                # Fixed: launch as a fire-and-forget background task the tick
+                # loop never awaits, gated so at most one runs at a time.
+                # `fork_and_predict` reads `self.line`'s station attributes
+                # while the tick loop concurrently mutates them in later
+                # ticks -- accepted deliberately: this is an advisory
+                # forecast display, plain-attribute reads are GIL-serialized
+                # at the bytecode level so this cannot corrupt anything, and
+                # a torn read at worst yields a forecast one tick staler than
+                # claimed, never a wrong simulation result.
+                self._prediction_task = asyncio.create_task(
+                    self._run_prediction(self.run_id, self.line)
+                )
 
             assert self._t0 is not None
             target = self._t0 + self.tick * REAL_DT
@@ -219,6 +268,16 @@ class Engine:
                 real_time_factor=real_time_factor,
             )
 
+    async def _run_prediction(self, run_id: str, line: Line) -> None:
+        """Background task body -- see the REAL BUG note at the call site.
+        `run_id` is captured at task creation so a forecast from a run that
+        has since been restarted over cannot overwrite the new run's state
+        once it finally finishes.
+        """
+        result = await asyncio.to_thread(fork_and_predict, line, horizon_s=PREDICTION_HORIZON_S)
+        if run_id == self.run_id:
+            self._predicted_bottleneck = result
+
     def _update_risk_scores(self) -> None:
         """Model B at ~1Hz (RISK_SCORE_HZ), regardless of tick rate. Called
         directly, not via `asyncio.to_thread`: a 5-feature XGBoost + isotonic
@@ -241,17 +300,17 @@ class Engine:
             self._feature_extractor.update_risk_ewma(sid, tagged.value)
             self._risk_cache[sid] = (tagged, drivers, self.tick)
 
-    def _compute_inference(self) -> None:
-        """Harmonic extension over the 8 uninstrumented stations, run once
-        per tick (a 30x30 linear solve; measured well under a millisecond,
-        no `to_thread` needed -- see the Tukey-Kramer / risk-scoring
-        precedents above for when that call is and isn't warranted).
+    def _observed_and_prior_cycle_times(self) -> tuple[dict[str, float], dict[str, float]]:
+        """Shared by `_compute_inference` (every tick) and
+        `sensor_placement_ranking` (on demand, Phase 10's leadership view) --
+        one definition of "what does the graph layer currently know" rather
+        than two that could silently drift apart.
 
-        `observed_values` uses each instrumented station's last completed
-        cycle time, or its own zone's base cycle time as a fallback before
-        that station has completed anything yet -- a station that has not
-        produced a real reading is not meaningfully different from one with
-        no sensor at all, for this one tick.
+        Uses each instrumented station's last completed cycle time, or its
+        own zone's base cycle time as a fallback before that station has
+        completed anything yet -- a station that has not produced a real
+        reading is not meaningfully different from one with no sensor at
+        all, for this one tick.
         """
         observed: dict[str, float] = {}
         prior: dict[str, float] = {}
@@ -262,6 +321,26 @@ class Engine:
                 observed[sid] = station.last_cycle_time_s or zone_base
             else:
                 prior[sid] = zone_base
+        return observed, prior
+
+    def sensor_placement_ranking(self, budget: int) -> list[str]:
+        """Which currently-dark stations would most improve inference
+        coverage if instrumented next, per Phase 9's greedy placement
+        (graph/placement.py) -- exposed for the leadership view's
+        instrumentation-required-vs-recommended panel.
+        """
+        observed, prior = self._observed_and_prior_cycle_times()
+        return greedy_sensor_placement(
+            self.config.station_ids, self.config.dark_stations, observed, prior, budget
+        )
+
+    def _compute_inference(self) -> None:
+        """Harmonic extension over the 8 uninstrumented stations, run once
+        per tick (a 30x30 linear solve; measured well under a millisecond,
+        no `to_thread` needed -- see the Tukey-Kramer / risk-scoring
+        precedents above for when that call is and isn't warranted).
+        """
+        observed, prior = self._observed_and_prior_cycle_times()
 
         results = harmonic_extension(
             self.config.station_ids,
@@ -386,7 +465,7 @@ class Engine:
             fault_detail=self.fault_detail,
             stations=stations,
             bottleneck=bottleneck,
-            predicted_bottleneck=None,  # Phase 8
+            predicted_bottleneck=self._predicted_bottleneck,
             line_throughput_uph=line_throughput,
             wip=wip,
             real_time_factor=real_time_factor,

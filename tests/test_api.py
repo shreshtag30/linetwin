@@ -141,6 +141,40 @@ async def test_heartbeat(client: httpx.AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_sensor_placement_ranks_only_currently_dark_stations(
+    client: httpx.AsyncClient,
+) -> None:
+    engine = client.engine  # type: ignore[attr-defined]
+    r = await client.get("/api/twin/sensor_placement", params={"budget": 3})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["budget"] == 3
+    assert set(body["dark_stations"]) == engine.config.dark_stations
+    assert len(body["recommended_next"]) == 3
+    assert set(body["recommended_next"]) <= engine.config.dark_stations
+    assert len(set(body["recommended_next"])) == 3  # no duplicate picks
+
+
+@pytest.mark.asyncio
+async def test_sensor_placement_rejects_a_negative_budget(client: httpx.AsyncClient) -> None:
+    r = await client.get("/api/twin/sensor_placement", params={"budget": -1})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_economics_config_exposes_the_stated_roi_constants(
+    client: httpx.AsyncClient,
+) -> None:
+    from twin.economics import QC_LAG_UNITS, REWORK_COST_DELTA_USD
+
+    r = await client.get("/api/twin/economics_config")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["qc_lag_units"] == QC_LAG_UNITS
+    assert body["rework_cost_delta_usd"] == REWORK_COST_DELTA_USD
+
+
+@pytest.mark.asyncio
 async def test_restart_accepts_and_engine_eventually_reflects_it(
     client: httpx.AsyncClient,
 ) -> None:

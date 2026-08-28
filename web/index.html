@@ -12,7 +12,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark">LineTwin</span>
-      <span class="brand-sub">Floor Supervisor</span>
+      <span class="brand-sub">Three views, one live model</span>
     </div>
     <div id="vitals" class="vitals">
       <span class="lamp" id="lamp" data-state="connecting"></span>
@@ -28,7 +28,24 @@
     </div>
   </header>
 
-  <main class="layout">
+  <nav class="persona-tabs">
+    <button class="persona-tab is-active" id="tab-floor" data-view="view-floor">Floor Supervisor</button>
+    <button class="persona-tab" id="tab-plant" data-view="view-plant">Plant Manager</button>
+    <button class="persona-tab" id="tab-leadership" data-view="view-leadership">Leadership</button>
+  </nav>
+
+  <!-- One <main> landmark for the whole tabbed content region -- the three
+       persona views below are toggled via `hidden`/CSS, not separate
+       document landmarks, since exactly one is ever the "main content" at
+       parse time regardless of which tab is active. -->
+  <main>
+
+  <div class="layout persona-view" id="view-floor">
+
+    <section class="panel view-requirement">
+      <p>Answers: <b>real-time bottleneck detection and live perturbation</b> — the shop-floor
+        supervisor's second-by-second view of the running line.</p>
+    </section>
 
     <section class="panel bottleneck-panel">
       <h2>Bottleneck</h2>
@@ -75,6 +92,115 @@
       <h2>Stations</h2>
       <div id="zones"></div>
     </section>
+
+  </div>
+
+  <div class="layout persona-view" id="view-plant" hidden>
+
+    <section class="panel view-requirement">
+      <p>Answers: <b>three personas need different views over one model</b> — a plant manager
+        watches trends and shifts across a shift, not a single tick.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Bottleneck frequency this session</h2>
+      <p class="panel-sub">Share of observed ticks each station has been named the live bottleneck — a rolling tally, not a single snapshot.</p>
+      <div id="pm-frequency" class="freq-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Predicted downtime</h2>
+      <p class="panel-sub">Rolling-horizon forecast (Ragazzini et al. 2024) — a fork of the live line run forward, re-diagnosed. Distinct from the current bottleneck above.</p>
+      <div class="bottleneck-card" id="pm-predicted-card">
+        <div class="bn-station" id="pm-predicted-station">–</div>
+        <p class="bn-explanation" id="pm-predicted-explanation">Waiting for the first forecast…</p>
+        <p class="pm-shift-note" id="pm-shift-note"></p>
+      </div>
+    </section>
+
+    <section class="panel charts-panel">
+      <h2>Shift-length trend</h2>
+      <div class="chart-row">
+        <div class="chart-box">
+          <h3>Throughput (UPH), longer window</h3>
+          <div id="pm-chart-throughput"></div>
+        </div>
+        <div class="chart-box">
+          <h3>WIP, longer window</h3>
+          <div id="pm-chart-wip"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel stations-panel">
+      <h2>Shifting-bottleneck timeline</h2>
+      <p class="panel-sub">Every time the live bottleneck verdict changes station, logged with the tick it changed at.</p>
+      <div id="pm-timeline" class="timeline"></div>
+    </section>
+
+  </div>
+
+  <div class="layout persona-view" id="view-leadership" hidden>
+
+    <section class="panel view-requirement">
+      <p>Answers: <b>the business case</b> — instrumentation cost against risk exposure, stated as an
+        estimate from named assumptions, never as an audited saving.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Risk exposure (estimate)</h2>
+      <p class="panel-sub">
+        <code>units_at_risk = mean(defect_risk) × qc_lag_units</code> ·
+        <code>dollars_at_stake = units_at_risk × rework_cost_delta</code> —
+        <code>src/twin/economics.py</code>, every constant stamped <i>synthetic — uncalibrated</i>.
+        This is a projection from stated assumptions, not a measured saving.
+      </p>
+      <div class="roi-grid">
+        <div class="roi-cell">
+          <span class="k">Mean defect risk (live)</span>
+          <span class="v" id="ld-mean-risk">–</span>
+        </div>
+        <div class="roi-cell">
+          <span class="k">QC lag <span class="src">(config)</span></span>
+          <span class="v" id="ld-qc-lag">–</span>
+        </div>
+        <div class="roi-cell">
+          <span class="k">Units at risk (est.)</span>
+          <span class="v" id="ld-units-at-risk">–</span>
+        </div>
+        <div class="roi-cell">
+          <span class="k">Rework cost avoided (est.)</span>
+          <span class="v" id="ld-dollars">–</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Instrumentation — required vs. recommended</h2>
+      <p class="panel-sub">Phase 9's greedy placement (1−1/e guarantee, Krause/Singh/Guestrin 2008): which dark stations would most improve coverage next.</p>
+      <div class="roi-grid">
+        <div class="roi-cell">
+          <span class="k">Stations, total</span>
+          <span class="v" id="ld-station-count">–</span>
+        </div>
+        <div class="roi-cell">
+          <span class="k">Instrumented</span>
+          <span class="v" id="ld-instrumented-count">–</span>
+        </div>
+        <div class="roi-cell">
+          <span class="k">Dark (uninstrumented)</span>
+          <span class="v" id="ld-dark-count">–</span>
+        </div>
+      </div>
+      <div class="control-row" style="margin-top:12px">
+        <label for="ld-budget">Sensors to add next</label>
+        <input type="range" id="ld-budget" min="1" max="8" step="1" value="3">
+        <span id="ld-budget-val">3</span>
+      </div>
+      <div id="ld-recommend" class="freq-list"></div>
+    </section>
+
+  </div>
 
   </main>
 

@@ -10,11 +10,12 @@ import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, HTTPException, Response
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Response
 from fastapi.sse import EventSourceResponse
 from fastapi.staticfiles import StaticFiles
 
 from twin.contracts import ControlAck, ControlCommand
+from twin.economics import QC_LAG_UNITS, REWORK_COST_DELTA_USD
 from twin.sim.engine import Engine
 
 from .sse import make_stream_route
@@ -85,6 +86,28 @@ def make_control_routes(engine: Engine) -> APIRouter:
     @router.get("/healthz")
     async def healthz() -> dict:
         return {"status": "ok"}
+
+    @router.get("/api/twin/sensor_placement")
+    async def sensor_placement(budget: int = Query(default=3, ge=0, le=30)) -> dict:
+        # Phase 9's greedy placement (graph/placement.py), exposed for the
+        # leadership view's instrumentation-required-vs-recommended panel --
+        # ranked by how much each pick would currently improve coverage over
+        # the remaining dark stations, re-solved after each pick.
+        return {
+            "dark_stations": sorted(engine.config.dark_stations),
+            "recommended_next": engine.sensor_placement_ranking(budget),
+            "budget": budget,
+        }
+
+    @router.get("/api/twin/economics_config")
+    async def economics_config() -> dict:
+        # Static per-process constants (src/twin/economics.py), not part of
+        # the per-tick Snapshot -- fetched once, not streamed, so the frozen
+        # wire contract (contracts.py) never needed touching for this.
+        return {
+            "qc_lag_units": QC_LAG_UNITS,
+            "rework_cost_delta_usd": REWORK_COST_DELTA_USD,
+        }
 
     return router
 
