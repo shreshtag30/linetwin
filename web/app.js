@@ -61,6 +61,27 @@ function connect() {
     pmTimeline.length = 0;
     renderFrequency();
     renderTimeline();
+
+    // REAL BUG, found live: a long-lived tab that outlives a server restart
+    // gets a fresh run_meta (this handler) via EventSource's automatic
+    // reconnect, but the four uPlot instances below were only ever fed new
+    // data via setData() -- never recreated. uPlot caches an internal
+    // auto-scale range across setData() calls, and clearing to an empty
+    // array and refilling from zero does not reliably reset that cached
+    // range; one chart on the same page could end up rendering against a
+    // stale scale from the previous run while a sibling chart, whose new
+    // range happened to still fit the old one, looked fine -- exactly the
+    // "WIP renders, Throughput doesn't, same live server" report this fixes.
+    // destroy() + null is the only way to guarantee no stale internal state
+    // survives a reset; the next snapshot's drawCharts()/drawPmCharts()
+    // recreates each chart fresh via their existing `if (!chart)` branch.
+    for (const chart of [throughputChart, wipChart, pmThroughputChart, pmWipChart]) {
+      if (chart) chart.destroy();
+    }
+    throughputChart = null;
+    wipChart = null;
+    pmThroughputChart = null;
+    pmWipChart = null;
   });
 
   es.addEventListener("snapshot", (e) => {
