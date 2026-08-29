@@ -2,9 +2,21 @@
   "evaluated_on": "config E (UNSEEN)",
   "model": {
     "pr_auc": 0.026399179397287875,
+    "no_skill_pr_auc": 0.005004021088374587,
+    "pr_auc_over_no_skill_x": 5.2755931541972965,
     "roc_auc": 0.8271497530309834,
     "mcc_at_threshold": 0.0884685894084957,
-    "threshold": 0.02
+    "threshold": 0.02,
+    "precision_at_threshold": 0.026558891454965358,
+    "recall_at_threshold": 0.4107142857142857,
+    "f1_at_threshold": 0.049891540130151846,
+    "confusion_matrix_at_threshold": {
+      "true_negative": 30876,
+      "false_positive": 2529,
+      "false_negative": 99,
+      "true_positive": 69
+    },
+    "flag_rate_at_threshold": 0.07738361183093558
   },
   "single_feature_baseline_cycle_time_z": {
     "pr_auc": 0.018239228703696795

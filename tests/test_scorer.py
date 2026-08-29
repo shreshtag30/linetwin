@@ -6,6 +6,8 @@ same convention as tests/test_no_config_leak.py.
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
@@ -77,3 +79,47 @@ def test_risk_is_monotone_non_decreasing_in_each_feature(
     # every adjacent pair.
     diffs = np.diff(risks)
     assert np.all(diffs >= -1e-9), f"{feature_name}: risk decreased somewhere in the sweep: {risks}"
+
+
+def test_metrics_report_the_operating_point_not_just_ranking_metrics() -> None:
+    """Regression test for a real gap: an earlier version of tools/train_
+    station_risk.py reported PR-AUC, ROC-AUC, MCC-at-threshold, and lift over
+    a single-feature baseline, but never the no-skill PR-AUC reference point
+    (== the positive base rate -- the standard comparison for PR-AUC on an
+    imbalanced problem) or precision/recall/the confusion matrix AT that
+    threshold. Without those, "PR-AUC 0.026" and "+44.7% lift" are both
+    unfalsifiable-sounding numbers with no operating-point meaning -- a
+    reader can't tell how many false alarms the model produces per real
+    catch, which is exactly the brief's own "false alarms erode trust"
+    complexity. Fixed by persisting all of these alongside the existing
+    metrics.
+    """
+    metrics_path = MODELS_DIR / "station_risk_metrics.json"
+    if not metrics_path.exists():
+        pytest.skip(f"{metrics_path} not populated -- run tools/train_station_risk.py first")
+
+    metrics = json.loads(metrics_path.read_text())["model"]
+
+    for key in (
+        "no_skill_pr_auc",
+        "pr_auc_over_no_skill_x",
+        "precision_at_threshold",
+        "recall_at_threshold",
+        "f1_at_threshold",
+        "confusion_matrix_at_threshold",
+        "flag_rate_at_threshold",
+    ):
+        assert key in metrics, f"missing {key}"
+
+    assert 0.0 <= metrics["precision_at_threshold"] <= 1.0
+    assert 0.0 <= metrics["recall_at_threshold"] <= 1.0
+    assert 0.0 <= metrics["flag_rate_at_threshold"] <= 1.0
+    # No-skill PR-AUC is defined as the positive base rate -- pin the
+    # identity itself, not just that the field exists.
+    cm = metrics["confusion_matrix_at_threshold"]
+    total = cm["true_negative"] + cm["false_positive"] + cm["false_negative"] + cm["true_positive"]
+    positives = cm["false_negative"] + cm["true_positive"]
+    assert metrics["no_skill_pr_auc"] == pytest.approx(positives / total, abs=1e-6)
+    assert metrics["pr_auc_over_no_skill_x"] == pytest.approx(
+        metrics["pr_auc"] / metrics["no_skill_pr_auc"], abs=1e-6
+    )

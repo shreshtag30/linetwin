@@ -138,6 +138,30 @@ genuine, if small-absolute-magnitude, combiner — not reframed as marginal.
 imposed by the training flag: sweeping each feature from its typical range while holding the others at
 baseline, calibrated risk is non-decreasing everywhere, for every one of the five features independently.
 
+**Correction, found later (post-Phase-10): the original metrics above omitted the operating point.**
+"PR-AUC 0.0264" and "+44.7% lift" are both unfalsifiable-sounding without two things this phase's
+record originally left out: the no-skill reference (PR-AUC's standard baseline on an imbalanced
+problem is the positive base rate, not just a single-feature comparison) and precision/recall at the
+actual MCC-tuned operating threshold. Computed directly and now persisted in
+`ml/models/station_risk_metrics.json` by `tools/train_station_risk.py`:
+
+| Metric (config E, threshold 0.02) | Value |
+|---|---|
+| PR-AUC vs. no-skill (base rate) | 0.0264 vs. 0.0050 — **5.3× no-skill** |
+| Precision at threshold | **2.66%** |
+| Recall at threshold | **41.1%** (69 of 168 real defects caught) |
+| Flag rate | 7.7% of all units flagged |
+| Confusion matrix | tn=30,876 fp=2,529 fn=99 tp=69 |
+
+Read plainly: at this threshold, the model catches 4 in 10 real defects, but raises roughly 37 false
+alarms for every true catch. This is exactly the brief's own "false alarms erode trust" complexity,
+made concrete rather than left implicit behind a single MCC scalar (which was already reported —
+0.088 — but without the precision/recall context that explains *why* it's that low). Not a reason to
+distrust the model's ranking ability (ROC-AUC 0.827, 5.3× no-skill PR-AUC are both real signal); a
+reason the *deployed threshold* would need a real conversation with plant operators about acceptable
+flag volume, which this prototype does not attempt to have on their behalf. `tests/test_scorer.py`
+now pins this reporting as a regression (`test_metrics_report_the_operating_point_not_just_ranking_metrics`).
+
 ---
 
 ## Deliverables produced

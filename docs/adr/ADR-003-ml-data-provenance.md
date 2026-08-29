@@ -61,6 +61,12 @@ single-signal baseline is X%" — a small honest lift beats an unmeasured claim.
 
 - Accuracy appears exactly once in the entire repository — the sentence explaining why it is never
   reported (Bosch's ~0.58% base rate makes always-predict-zero score ~99.4% "accuracy").
+- A ranking metric (PR-AUC) reported alone is not enough, even alongside a baseline comparison: it
+  says nothing about the operating point a plant would actually run at. `tools/train_station_risk.py`
+  also persists the no-skill PR-AUC reference (the positive base rate — the standard comparison for
+  an imbalanced problem), and precision/recall/the confusion matrix at the MCC-tuned threshold —
+  found missing after Phase 8 closed and added as a correction (`docs/phases/phase-08-predictive-layer.md`),
+  not silently left for a reader to notice the gap themselves.
 - Every `RiskDriver` in the wire contract carries `relation: "associative"` as a `Literal`, not a
   free-text label — the type system itself prevents a future change from silently dropping the
   associative-not-causal qualifier.

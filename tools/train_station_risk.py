@@ -28,7 +28,15 @@ import pandas as pd
 import xgboost as xgb
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, matthews_corrcoef, roc_auc_score
+from sklearn.metrics import (
+    average_precision_score,
+    confusion_matrix,
+    f1_score,
+    matthews_corrcoef,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 
 from twin.risk.features import FEATURE_NAMES
 
@@ -111,14 +119,42 @@ def main() -> None:
     else:
         lift_pct = float("inf")
 
+    # No-skill PR-AUC == the positive base rate. This is the standard reference
+    # point for PR-AUC on an imbalanced problem -- more standard, and more
+    # honest, than comparing only against a weak single-feature baseline. A
+    # PR-AUC of 0.026 means nothing on its own; "5x the no-skill rate" does.
+    no_skill_pr_auc = float(y_test.mean())
+
     model_pred_at_threshold = (calibrated_test_scores >= threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_test, model_pred_at_threshold).ravel()
+    precision = precision_score(y_test, model_pred_at_threshold, zero_division=0)
+    recall = recall_score(y_test, model_pred_at_threshold, zero_division=0)
+    pr_auc_over_no_skill = model_pr_auc / no_skill_pr_auc if no_skill_pr_auc > 0 else None
+
     metrics = {
         "evaluated_on": f"config {TEST_CONFIG} (UNSEEN)",
         "model": {
             "pr_auc": model_pr_auc,
+            "no_skill_pr_auc": no_skill_pr_auc,
+            "pr_auc_over_no_skill_x": pr_auc_over_no_skill,
             "roc_auc": roc_auc_score(y_test, calibrated_test_scores),
             "mcc_at_threshold": matthews_corrcoef(y_test, model_pred_at_threshold),
             "threshold": threshold,
+            # At the MCC-tuned threshold. Reported honestly alongside MCC:
+            # a threshold chosen to maximize MCC is not the same threshold
+            # a plant would necessarily want to run at, and precision this
+            # low is exactly the "false alarms erode trust" risk the brief
+            # itself names -- not something to bury behind a single scalar.
+            "precision_at_threshold": float(precision),
+            "recall_at_threshold": float(recall),
+            "f1_at_threshold": float(f1_score(y_test, model_pred_at_threshold, zero_division=0)),
+            "confusion_matrix_at_threshold": {
+                "true_negative": int(tn),
+                "false_positive": int(fp),
+                "false_negative": int(fn),
+                "true_positive": int(tp),
+            },
+            "flag_rate_at_threshold": float(model_pred_at_threshold.mean()),
         },
         "single_feature_baseline_cycle_time_z": {
             "pr_auc": baseline_pr_auc,
@@ -128,8 +164,15 @@ def main() -> None:
 
     print()
     print(f"Model B PR-AUC (evaluated on {TEST_CONFIG}, UNSEEN): {model_pr_auc:.4f}")
+    print(f"No-skill PR-AUC (base rate):                         {no_skill_pr_auc:.4f}")
+    print(f"  -> {model_pr_auc / no_skill_pr_auc:.1f}x no-skill" if no_skill_pr_auc > 0 else "")
     print(f"Single-feature cycle_time_z baseline PR-AUC:         {baseline_pr_auc:.4f}")
-    print(f"Lift over baseline: {lift_pct:+.1f}%")
+    print(f"Lift over single-feature baseline: {lift_pct:+.1f}%")
+    print()
+    print(f"At threshold {threshold:.2f} (MCC-tuned on config D):")
+    print(f"  precision={precision:.4f}  recall={recall:.4f}  "
+          f"flag_rate={model_pred_at_threshold.mean():.4f}")
+    print(f"  confusion matrix: tn={tn} fp={fp} fn={fn} tp={tp}")
     if lift_pct < 10:
         print(
             "HONEST-LIFT GATE: lift is under 10%. Per docs/DATA.md and the project's own "
