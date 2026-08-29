@@ -32,6 +32,22 @@ const pmTimeline = []; // [{tick, from, to}], newest first
 let economicsConfig = null; // {qc_lag_units, rework_cost_delta_usd}, fetched once
 let ldBudgetFetchTimer = null;
 
+// Alerts -- computed client-side from the same stream every other panel
+// reads, no extra server work. Three kinds: bottleneck shift (pushed from
+// updatePlantManager's existing transition detection), a station's risk
+// score crossing the model's own tuned threshold (rising edge only), and a
+// station stuck BLOCKED/STARVED for many consecutive ticks in a row.
+const ALERTS_MAX = 30;
+const DISRUPTION_ALERT_TICKS = 15; // consecutive disrupted ticks before it's "sustained", not a blip
+const NARRATION_FOLLOWUP_TICKS = 24; // ~3s at 8Hz -- long enough for a real effect to show up
+let riskThreshold = null; // Model B's own MCC-tuned threshold, fetched once
+const alerts = [];
+const riskFlagState = {}; // station_id -> already-flagged this rising edge?
+const disruptionStreak = {}; // station_id -> consecutive ticks BLOCKED/STARVED
+const disruptionAlerted = {}; // station_id -> already alerted for the CURRENT streak?
+let lastSnapshot = null; // most recent snapshot, for capturing "before" state on Apply
+let pendingNarration = null; // {stationId, multiplier, appliedAtTick, beforeBottleneckId, beforeQueue}
+
 function $(id) { return document.getElementById(id); }
 
 function setLamp(state) {
@@ -61,6 +77,13 @@ function connect() {
     pmTimeline.length = 0;
     renderFrequency();
     renderTimeline();
+
+    alerts.length = 0;
+    for (const k of Object.keys(riskFlagState)) delete riskFlagState[k];
+    for (const k of Object.keys(disruptionStreak)) delete disruptionStreak[k];
+    for (const k of Object.keys(disruptionAlerted)) delete disruptionAlerted[k];
+    pendingNarration = null;
+    renderAlerts();
 
     // REAL BUG, found live: a long-lived tab that outlives a server restart
     // gets a fresh run_meta (this handler) via EventSource's automatic
@@ -113,6 +136,9 @@ function renderSnapshot(snap) {
 
   updatePlantManager(snap);
   updateLeadership(snap);
+  updateStationAlerts(snap);
+  updateNarrationFollowup(snap);
+  lastSnapshot = snap;
 
   if (stationOrder.length === 0) {
     stationOrder = snap.stations.map((s) => s.station_id);
@@ -278,6 +304,19 @@ async function applyControl() {
     if (resp.ok) {
       ackEl.dataset.status = "ok";
       ackEl.textContent = `Applied ${cycle_time_multiplier}× to ${station_id} at tick ${body.applied_at_tick}.`;
+
+      renderNarration("What this should do", explainMechanism(station_id, cycle_time_multiplier), false);
+      const beforeStation = lastSnapshot
+        ? lastSnapshot.stations.find((s) => s.station_id === station_id)
+        : null;
+      pendingNarration = {
+        stationId: station_id,
+        multiplier: cycle_time_multiplier,
+        appliedAtTick: body.applied_at_tick,
+        beforeBottleneckId:
+          lastSnapshot && lastSnapshot.bottleneck ? lastSnapshot.bottleneck.station_id : null,
+        beforeQueue: beforeStation ? beforeStation.queue_depth : null,
+      };
     } else {
       ackEl.dataset.status = "err";
       ackEl.textContent = `Rejected (${resp.status}): ${body.detail || "unknown error"}`;
@@ -326,6 +365,13 @@ function updatePlantManager(snap) {
   } else if (currentId !== pmLastBottleneckId) {
     pmTimeline.unshift({ tick: snap.tick, from: pmLastBottleneckId || "–", to: currentId || "–" });
     if (pmTimeline.length > PM_TIMELINE_MAX) pmTimeline.length = PM_TIMELINE_MAX;
+    const confidence = bn ? bn.confidence : "none";
+    pushAlert(
+      confidence === "established" ? "warning" : "info",
+      "Bottleneck shift",
+      `${pmLastBottleneckId || "none"} → ${currentId || "none"} (${confidence})`,
+      snap.tick
+    );
     pmLastBottleneckId = currentId;
   }
 
@@ -492,6 +538,173 @@ async function fetchSensorPlacement() {
 }
 
 /* ---------------------------------------------------------------------
+ * Live alerts (Floor Supervisor tab). Bottleneck-shift alerts are pushed
+ * from updatePlantManager's existing transition detection above; the other
+ * two kinds are detected here, per station, per tick.
+ * ------------------------------------------------------------------- */
+
+async function loadRiskThreshold() {
+  try {
+    const resp = await fetch("/api/twin/risk_threshold");
+    const body = await resp.json();
+    riskThreshold = body.threshold; // null if Model B isn't trained/loaded
+  } catch {
+    riskThreshold = null;
+  }
+}
+
+function pushAlert(severity, title, detail, tick) {
+  alerts.unshift({ severity, title, detail, tick });
+  if (alerts.length > ALERTS_MAX) alerts.length = ALERTS_MAX;
+  renderAlerts();
+}
+
+function renderAlerts() {
+  const el = $("alerts-list");
+  if (alerts.length === 0) {
+    el.innerHTML = '<p class="panel-sub">No alerts yet — the line is running normally.</p>';
+    return;
+  }
+  el.innerHTML = "";
+  for (const a of alerts) {
+    const row = document.createElement("div");
+    row.className = "alert-row";
+    row.dataset.severity = a.severity;
+    row.innerHTML = `
+      <span class="alert-tick">tick ${a.tick}</span>
+      <span class="alert-body">
+        <span class="alert-title">${a.title}</span>
+        <div class="alert-detail">${a.detail}</div>
+      </span>
+    `;
+    el.appendChild(row);
+  }
+}
+
+function updateStationAlerts(snap) {
+  for (const st of snap.stations) {
+    // Risk flag: only fires on the RISING edge (was below, now at/above),
+    // not every tick a station stays elevated -- a real alert feed that
+    // repeats itself every tick is exactly the "cries wolf" failure mode
+    // this dashboard is trying not to have.
+    if (riskThreshold !== null && st.defect_risk && st.defect_risk.value !== null) {
+      const flagged = st.defect_risk.value >= riskThreshold;
+      if (flagged && !riskFlagState[st.station_id]) {
+        const drivers = (st.risk_drivers || [])
+          .map((d) => d.feature)
+          .slice(0, 2)
+          .join(", ");
+        pushAlert(
+          "critical",
+          `Risk flag — ${st.station_id}`,
+          `Defect-risk score ${(st.defect_risk.value * 100).toFixed(1)}% crossed the model's ` +
+            `own decision threshold (${(riskThreshold * 100).toFixed(1)}%).` +
+            (drivers ? ` Top drivers (associative, not causal): ${drivers}.` : ""),
+          snap.tick
+        );
+      }
+      riskFlagState[st.station_id] = flagged;
+    }
+
+    // Sustained disruption: a station stuck BLOCKED or STARVED for many
+    // consecutive ticks, not a one-tick blip. Fires once per streak, right
+    // when it first crosses the threshold, not again every tick after.
+    const disrupted = st.state === "blocked" || st.state === "starved";
+    if (disrupted) {
+      disruptionStreak[st.station_id] = (disruptionStreak[st.station_id] || 0) + 1;
+      if (
+        disruptionStreak[st.station_id] === DISRUPTION_ALERT_TICKS &&
+        !disruptionAlerted[st.station_id]
+      ) {
+        pushAlert(
+          "warning",
+          `Sustained disruption — ${st.station_id}`,
+          `${st.state} for ${DISRUPTION_ALERT_TICKS}+ consecutive ticks — likely a real, ` +
+            `ongoing effect of a slowdown elsewhere on the line, not a momentary blip.`,
+          snap.tick
+        );
+        disruptionAlerted[st.station_id] = true;
+      }
+    } else {
+      disruptionStreak[st.station_id] = 0;
+      disruptionAlerted[st.station_id] = false;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Causal narration: what a perturbation click actually does, and --a few
+ * seconds later, computed from real snapshot data, not scripted-- what it
+ * actually caused.
+ * ------------------------------------------------------------------- */
+
+function explainMechanism(stationId, multiplier) {
+  if (multiplier === 1) {
+    return `Reset ${stationId} to its normal cycle time. No change expected.`;
+  }
+  const direction = multiplier > 1 ? "slower" : "faster";
+  const timeChange = multiplier > 1 ? "longer" : "less time";
+  const neighborEffect =
+    multiplier > 1
+      ? `its outgoing buffer will drain slower than the incoming one fills, so the station just ` +
+        `<b>before</b> it may start showing BLOCKED`
+      : `it will pull from its incoming buffer faster than normal, so the station just ` +
+        `<b>before</b> it may start showing STARVED`;
+  return (
+    `You set <b>${stationId}</b> to run at <b>${multiplier}×</b> its normal cycle time ` +
+    `(${direction}). What to expect: ${stationId} now takes ${timeChange} to finish each unit, so ` +
+    `${neighborEffect}. The Active Period Method tracks how long each station stays continuously ` +
+    `active; if ${stationId}'s active period becomes the line's longest, it becomes the new ` +
+    `bottleneck — usually within a couple of seconds. Its defect-risk score (if a model is loaded) ` +
+    `will also update at the next scoring pass using the new queue-pressure and cycle-time signals.`
+  );
+}
+
+function explainOutcome(pending, snap) {
+  const bn = snap.bottleneck;
+  const currentBottleneckId = bn && bn.station_id ? bn.station_id : null;
+  const st = snap.stations.find((s) => s.station_id === pending.stationId);
+  const queueNow = st ? st.queue_depth : null;
+
+  let msg;
+  if (currentBottleneckId === pending.stationId && pending.beforeBottleneckId !== pending.stationId) {
+    msg = `<b>${pending.stationId} became the new bottleneck</b> (was ${pending.beforeBottleneckId || "none"}).`;
+  } else if (currentBottleneckId === pending.stationId) {
+    msg = `${pending.stationId} is still the bottleneck.`;
+  } else {
+    msg = `The bottleneck is ${currentBottleneckId || "none"}, not ${pending.stationId} — ` +
+      `the effect either hasn't propagated far enough yet, or another station is still the bigger constraint.`;
+  }
+  if (queueNow !== null && pending.beforeQueue !== null) {
+    const delta = queueNow - pending.beforeQueue;
+    msg += ` ${pending.stationId}'s queue went from ${pending.beforeQueue} to ${queueNow} ` +
+      `(${delta >= 0 ? "+" : ""}${delta}).`;
+  }
+  return msg;
+}
+
+function renderNarration(label, html, isOutcome) {
+  const el = $("ctl-narration");
+  el.hidden = false;
+  const block = document.createElement("div");
+  block.className = "narration" + (isOutcome ? " n-outcome" : "");
+  block.innerHTML = `<span class="n-label">${label}</span>${html}`;
+  if (isOutcome) {
+    el.appendChild(block);
+  } else {
+    el.innerHTML = "";
+    el.appendChild(block);
+  }
+}
+
+function updateNarrationFollowup(snap) {
+  if (!pendingNarration) return;
+  if (snap.tick < pendingNarration.appliedAtTick + NARRATION_FOLLOWUP_TICKS) return;
+  renderNarration("What actually happened", explainOutcome(pendingNarration, snap), true);
+  pendingNarration = null;
+}
+
+/* ---------------------------------------------------------------------
  * Persona tabs
  * ------------------------------------------------------------------- */
 
@@ -536,5 +749,6 @@ $("ld-budget").addEventListener("input", (e) => {
 });
 
 loadEconomicsConfig();
+loadRiskThreshold();
 fetchSensorPlacement();
 connect();

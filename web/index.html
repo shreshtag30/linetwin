@@ -15,16 +15,16 @@
       <span class="brand-sub">Three views, one live model</span>
     </div>
     <div id="vitals" class="vitals">
-      <span class="lamp" id="lamp" data-state="connecting"></span>
+      <span class="lamp" id="lamp" data-state="connecting" title="Connection to the live server. Green = streaming, orange = (re)connecting, red = disconnected."></span>
       <span class="vital"><b id="v-readystate">connecting…</b></span>
-      <span class="vital">tick <b id="v-tick">–</b></span>
-      <span class="vital">seq <b id="v-seq">–</b></span>
-      <span class="vital">sim <b id="v-simtime">–</b> s</span>
-      <span class="vital">rtf <b id="v-rtf">–</b></span>
-      <span class="vital">lag <b id="v-lag">–</b> ms</span>
-      <button id="btn-kill" class="btn btn-ghost">Kill stream</button>
-      <button id="btn-resume" class="btn btn-ghost" disabled>Resume</button>
-      <button id="btn-restart" class="btn btn-ghost">Restart</button>
+      <span class="vital" title="Tick number -- one simulated 'heartbeat' of the line. Increments 8 times per real second locally.">tick <b id="v-tick">–</b></span>
+      <span class="vital" title="Sequence number of this update. Skips are normal -- only the newest frame is ever shown.">seq <b id="v-seq">–</b></span>
+      <span class="vital" title="Simulated seconds elapsed inside the model since this run started (not wall-clock time).">sim <b id="v-simtime">–</b> s</span>
+      <span class="vital" title="Real-time factor: how fast the simulation clock runs versus an actual clock. 1.0 = keeping pace with real time exactly.">rtf <b id="v-rtf">–</b></span>
+      <span class="vital" title="How far behind schedule the server's tick loop currently is, in milliseconds. Should stay near 0.">lag <b id="v-lag">–</b> ms</span>
+      <button id="btn-kill" class="btn btn-ghost" title="Close the live connection on purpose, to demonstrate the dashboard freezing without the server.">Kill stream</button>
+      <button id="btn-resume" class="btn btn-ghost" disabled title="Reconnect after Kill stream.">Resume</button>
+      <button id="btn-restart" class="btn btn-ghost" title="Restart the simulation from tick zero with a fresh run.">Restart</button>
     </div>
   </header>
 
@@ -33,6 +33,46 @@
     <button class="persona-tab" id="tab-plant" data-view="view-plant">Plant Manager</button>
     <button class="persona-tab" id="tab-leadership" data-view="view-leadership">Leadership</button>
   </nav>
+
+  <div class="intro-wrap">
+    <details class="intro-panel" open>
+      <summary>How LineTwin works — read this first</summary>
+      <div class="intro-body">
+        <p>
+          This is a <b>live simulation</b> of a 30-station vehicle assembly line (12 body stations,
+          6 paint stations, 12 final-assembly stations), running right now in a real Python process
+          on the server — nothing on this page is pre-recorded. Every number updates 8 times a
+          second as the simulated line actually runs.
+        </p>
+        <p>Four real mechanisms are running underneath what you see:</p>
+        <ul>
+          <li><b>Bottleneck detection</b> — the Active Period Method watches which station has been
+            continuously busy the longest, and names it the current bottleneck (§ Bottleneck card).</li>
+          <li><b>Defect-risk scoring</b> — a trained model scores every station's risk of producing a
+            defect right now, from live queue pressure and cycle-time signals (§ station tiles' risk
+            values, if a model is trained).</li>
+          <li><b>Sensor-gap inference</b> — 8 of the 30 stations have no sensor. Their values are
+            estimated from neighboring stations by solving a graph equation live, and tagged
+            <i>inferred</i> with an honest confidence percentage, never shown as if measured
+            (§ station tiles' "inferred — N%" pills).</li>
+          <li><b>Rolling-horizon prediction</b> — every second, the server forks the current state of
+            the line and fast-forwards it ~30 simulated minutes to forecast where the bottleneck is
+            headed next (§ Plant Manager tab's "Predicted downtime").</li>
+        </ul>
+        <p>
+          A fifth mechanism — <b>defect genealogy</b>, tracing a flagged defect backward to its likely
+          origin station — is built and tested (<code>src/twin/diagnostic/genealogy.py</code>) but is
+          not wired into this live dashboard; it runs against the event log on demand, not per tick.
+        </p>
+        <p>
+          <b>Try this:</b> go to the Perturbation panel below, pick any station and a cycle-time
+          multiplier, and click Apply. Watch the Bottleneck card, the charts, and the Alerts feed
+          respond within a couple of seconds — an explanation of exactly what should happen (and
+          later, what actually did) appears right there.
+        </p>
+      </div>
+    </details>
+  </div>
 
   <!-- One <main> landmark for the whole tabbed content region -- the three
        persona views below are toggled via `hidden`/CSS, not separate
@@ -47,8 +87,49 @@
         supervisor's second-by-second view of the running line.</p>
     </section>
 
+    <section class="panel alerts-panel">
+      <div class="panel-head">
+        <h2>Live alerts</h2>
+        <details class="how-it-works">
+          <summary>How this works</summary>
+          <p>Computed client-side from the same stream every other panel reads — nothing extra runs
+            server-side for this. Three kinds of alert, each labelled with how sure it is, on
+            purpose: the brief itself warns that false alarms erode trust, so every alert here says
+            <i>why</i> and <i>how confident</i>, never just a bare red flag.</p>
+          <ul>
+            <li><b>Bottleneck shift</b> — the live detector's verdict changed station. Tagged
+              <i>provisional</i> or <i>established</i>, exactly like the Bottleneck card.</li>
+            <li><b>Risk flag</b> — a station's defect-risk score crossed the trained model's own
+              tuned decision threshold (the same one it was evaluated against — not an arbitrary
+              round number). Only fires once per rising edge, not every tick it stays elevated.</li>
+            <li><b>Sustained disruption</b> — a station has been BLOCKED or STARVED for many
+              consecutive ticks in a row, which usually means it's the real, ongoing effect of a
+              slowdown elsewhere, not a one-tick blip.</li>
+          </ul>
+        </details>
+      </div>
+      <div id="alerts-list" class="alert-list">
+        <p class="panel-sub">No alerts yet — the line is running normally.</p>
+      </div>
+    </section>
+
     <section class="panel bottleneck-panel">
-      <h2>Bottleneck</h2>
+      <div class="panel-head">
+        <h2>Bottleneck</h2>
+        <details class="how-it-works">
+          <summary>How this works</summary>
+          <p>The <b>Active Period Method</b>: every station tracks how long it has been
+            continuously "active" (working, or stopped for a reason that isn't its own fault — down,
+            in repair, mid-setup). Whichever station's current active streak is the longest right
+            now is the bottleneck. This exact method was benchmarked against 5 alternatives on this
+            same line and won (100% top-1 accuracy against ground truth computed from a separate
+            sensitivity analysis).</p>
+          <p><b>Confidence</b>: "provisional" means the gap over the runner-up isn't yet large enough
+            to call statistically clear; "established" means it is. This is shown as a caveat, not
+            hidden — and deliberately never used to suppress an alert outright, since that would
+            also slow down detection.</p>
+        </details>
+      </div>
       <div id="bottleneck-card" class="bottleneck-card">
         <div class="bn-station" id="bn-station">–</div>
         <div class="bn-meta">
@@ -61,21 +142,44 @@
     </section>
 
     <section class="panel control-panel">
-      <h2>Perturbation</h2>
+      <div class="panel-head">
+        <h2>Perturbation</h2>
+        <details class="how-it-works">
+          <summary>How this works</summary>
+          <p>This is the one control that actually changes the live simulation: it multiplies one
+            station's cycle time going forward (a value already mid-cycle finishes at its original
+            speed — a real machine wouldn't jump speed mid-part either). Everything else on this
+            page is read-only, watching the effect ripple through.</p>
+        </details>
+      </div>
       <div class="control-row">
         <label for="ctl-station">Station</label>
         <select id="ctl-station"></select>
       </div>
       <div class="control-row">
-        <label for="ctl-mult">Cycle-time multiplier: <b id="ctl-mult-val">1.0×</b></label>
+        <label for="ctl-mult">Cycle-time multiplier: <b id="ctl-mult-val">1.0×</b>
+          <span class="mult-hint">(&lt;1 = faster, &gt;1 = slower)</span></label>
         <input type="range" id="ctl-mult" min="0.1" max="10" step="0.1" value="1.0">
       </div>
       <button id="ctl-apply" class="btn btn-primary">Apply</button>
       <p class="control-ack" id="ctl-ack"></p>
+      <div id="ctl-narration" class="narration" hidden></div>
     </section>
 
     <section class="panel charts-panel">
-      <h2>Line trend</h2>
+      <div class="panel-head">
+        <h2>Line trend</h2>
+        <details class="how-it-works">
+          <summary>How this works</summary>
+          <p><b>Throughput (UPH)</b> — units per hour the whole line is completing right now,
+            averaged across all 30 stations' own completion rates. A slowdown at one station drags
+            this down even if the other 29 are unaffected, because they end up starved or blocked
+            waiting on it.</p>
+          <p><b>WIP</b> (work in progress) — total units currently sitting in buffers between
+            stations, summed across the whole line. Rising WIP is the earliest visible sign of a new
+            bottleneck: units are piling up somewhere faster than they're draining.</p>
+        </details>
+      </div>
       <div class="chart-row">
         <div class="chart-box">
           <h3>Throughput (UPH)</h3>
@@ -89,7 +193,23 @@
     </section>
 
     <section class="panel stations-panel">
-      <h2>Stations</h2>
+      <div class="panel-head">
+        <h2>Stations</h2>
+        <details class="how-it-works">
+          <summary>How this works</summary>
+          <p>Every one of the 30 stations, grouped into its zone. <b>queue</b> is units waiting /
+            buffer capacity. <b>cycle</b> is the last completed unit's time at that station, tagged
+            with where the number came from — see the legend below.</p>
+        </details>
+      </div>
+      <div class="station-legend">
+        <span class="legend-item"><span class="legend-swatch" data-state="working"></span>Working</span>
+        <span class="legend-item"><span class="legend-swatch" data-state="starved"></span>Starved — waiting on the station before it</span>
+        <span class="legend-item"><span class="legend-swatch" data-state="blocked"></span>Blocked — can't hand off to the station after it</span>
+        <span class="legend-item"><span class="legend-swatch" data-state="down"></span>Down / repair / setup</span>
+        <span class="legend-item"><span class="confidence-pill" data-source="observed">observed</span>real sensor reading</span>
+        <span class="legend-item"><span class="confidence-pill" data-source="inferred">inferred — N%</span>estimated; N% traces to real sensor evidence</span>
+      </div>
       <div id="zones"></div>
     </section>
 
@@ -109,8 +229,19 @@
     </section>
 
     <section class="panel">
-      <h2>Predicted downtime</h2>
-      <p class="panel-sub">Rolling-horizon forecast (Ragazzini et al. 2024) — a fork of the live line run forward, re-diagnosed. Distinct from the current bottleneck above.</p>
+      <div class="panel-head">
+        <h2>Predicted downtime</h2>
+        <details class="how-it-works">
+          <summary>How this works</summary>
+          <p>Once a second, the server takes a copy of the line's current state (which stations are
+            busy/blocked/starved, current queue levels, any perturbation you've applied) and
+            fast-forwards that copy ~30 simulated minutes using an independent random sequence — a
+            "what happens if things keep going like this" projection, not a claim of exactly
+            replaying the real future. The forecast is then re-diagnosed the same way the live
+            bottleneck is.</p>
+        </details>
+      </div>
+      <p class="panel-sub">Distinct from the current bottleneck above — when they disagree, a shift may be coming.</p>
       <div class="bottleneck-card" id="pm-predicted-card">
         <div class="bn-station" id="pm-predicted-station">–</div>
         <p class="bn-explanation" id="pm-predicted-explanation">Waiting for the first forecast…</p>

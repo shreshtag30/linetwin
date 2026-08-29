@@ -109,6 +109,17 @@ def make_control_routes(engine: Engine) -> APIRouter:
             "rework_cost_delta_usd": REWORK_COST_DELTA_USD,
         }
 
+    @router.get("/api/twin/risk_threshold")
+    async def risk_threshold() -> dict:
+        # Model B's own MCC-tuned threshold (tools/train_station_risk.py),
+        # exposed so the UI's alert system flags a station on the SAME
+        # criterion the model was evaluated against -- not an arbitrary
+        # round number invented in JavaScript. None if Model B isn't loaded
+        # (ml/models/ not populated), matching how the rest of the payload
+        # already treats an absent scorer as an honest omission, not an error.
+        scorer = engine._risk_scorer
+        return {"threshold": scorer.threshold if scorer is not None else None}
+
     return router
 
 

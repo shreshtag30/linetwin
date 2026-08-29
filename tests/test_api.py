@@ -175,6 +175,22 @@ async def test_economics_config_exposes_the_stated_roi_constants(
 
 
 @pytest.mark.asyncio
+async def test_risk_threshold_matches_the_loaded_scorer(client: httpx.AsyncClient) -> None:
+    """Powers the dashboard's risk-flag alert -- it must fire at the SAME
+    threshold Model B was actually evaluated against, not an arbitrary round
+    number invented in JavaScript.
+    """
+    engine = client.engine  # type: ignore[attr-defined]
+    r = await client.get("/api/twin/risk_threshold")
+    assert r.status_code == 200
+    body = r.json()
+    if engine._risk_scorer is None:
+        assert body["threshold"] is None
+    else:
+        assert body["threshold"] == engine._risk_scorer.threshold
+
+
+@pytest.mark.asyncio
 async def test_restart_accepts_and_engine_eventually_reflects_it(
     client: httpx.AsyncClient,
 ) -> None:
