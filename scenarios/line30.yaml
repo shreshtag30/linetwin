@@ -58,7 +58,35 @@ zones:
     station_range: [13, 18]
     base_cycle_time_s: 50.0
     cv: 0.22
-    buffer_capacity: 4
+    # Was 4. Found live (user-reported): under the default config, BLOCKED
+    # was essentially unreachable within a live-demo timescale -- the
+    # offline benchmark (20,000 sim-s) shows S16 (upstream of the configured
+    # bottleneck S17) accumulates ~12% blocked time by the END of that run,
+    # but a fresh run shows 0.000% blocked at 5,475 sim-s (27% of the way
+    # there) -- not structurally impossible, just far slower than "watch it
+    # for a bit" implies. Root cause is NOT the arrival-slack fix (swept
+    # ARRIVAL_SLACK_FACTOR down to 1.00 and confirmed the ~12% ceiling at S16
+    # is identical regardless -- it's a local S16/S17 effect, not a
+    # front-of-line pacing one). Buffer capacity, not cycle-time multiplier,
+    # is the lever: tightening it lets a temporary imbalance overflow much
+    # sooner without touching the bottleneck multiplier already carefully
+    # tuned (1.3->1.15) for the shifting-bottleneck requirement. Verified
+    # directly at capacity=2 first: S16 reached ~5% blocked by 3,000 sim-s --
+    # fast, but Queue Length's already-fixed S12 confound
+    # (tests/test_detectors.py explicitly forbids S12 from ever winning) came
+    # back SYSTEMATICALLY: top-2 in 5/5 seeds, not the "occasional
+    # near-competitor" this codebase already tolerates for S13/S19. Root
+    # cause: capacity=2 tightens the S12->S13 zone-BOUNDARY buffer too, not
+    # just the interior paint-zone buffers, which makes S12 itself more
+    # prone to blocking and corrupts Queue Length's read on it. capacity=3
+    # keeps that regression inside the already-accepted "occasional, ~1/5
+    # seeds" tolerance while still reaching ~4.6% blocked at S16 by 4,000
+    # sim-s (~67 real s) and ~8.6% by 8,000 sim-s (~133 real s) -- a real,
+    # demo-relevant improvement over buf=4's several-minutes wait, without
+    # buf=2's systemic S12 regression. Onset is still bounded by pipeline
+    # fill time (units must physically traverse the 15-16 upstream stations
+    # first) -- no buffer setting makes it instant.
+    buffer_capacity: 3
     provenance: synthetic — uncalibrated
   final:
     station_range: [19, 30]

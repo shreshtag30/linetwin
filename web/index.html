@@ -23,7 +23,7 @@
        this a browser's ordinary HTTP cache can keep serving a stale script
        after a deploy indefinitely -- confirmed during this redesign: a plain
        reload kept re-running old cached JS with no console error at all. -->
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 
@@ -134,8 +134,13 @@
             <li><b>Active Period Method</b> — every station tracks how long it's been continuously
               "active" (working, or stopped for a reason that isn't its own fault). The longest
               current active streak is the bottleneck.</li>
-            <li>Benchmarked against 5 alternative methods on this line and won — 100% top-1 accuracy
-              against ground truth from a separate sensitivity analysis.</li>
+            <li>Benchmarked against 5 alternatives across <b>three distinct engineered-bottleneck
+              scenarios</b>, not just this one — active-period methods generalize best overall
+              (90% top-1 across all three), which is why this family is deployed, even though on
+              any single scenario a different comparison method can occasionally edge it out
+              (<code>docs/phases/detector_comparison_multiscenario.csv</code>, re-measured after
+              every change to the simulation's own parameters). The live rule is a momentary variant
+              of that same family, not a byte-for-byte replay of the offline benchmark.</li>
             <li><b>Confidence</b> — <i>provisional</i>: the gap over the runner-up isn't yet
               statistically clear. <i>established</i>: it is. Shown as a caveat, never used to
               suppress or delay detection.</li>
