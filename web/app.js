@@ -50,6 +50,34 @@ let pendingNarration = null; // {stationId, multiplier, appliedAtTick, beforeBot
 
 function $(id) { return document.getElementById(id); }
 
+/* ---------------------------------------------------------------------
+ * Theme toggle. index.html's inline head script already applies any
+ * stored preference before first paint (no flash); this just wires the
+ * button and keeps its icon in sync with the effective theme, including
+ * the very first click when no preference has been stored yet.
+ * ------------------------------------------------------------------- */
+
+function effectiveTheme() {
+  const explicit = document.documentElement.getAttribute("data-theme");
+  if (explicit === "light" || explicit === "dark") return explicit;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyThemeIcon() {
+  // Show the icon for the theme a click would SWITCH TO, not the current one.
+  $("btn-theme").textContent = effectiveTheme() === "dark" ? "☀️" : "🌙";
+}
+
+function toggleTheme() {
+  const next = effectiveTheme() === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("linetwin-theme", next); } catch (e) { /* ignore */ }
+  applyThemeIcon();
+}
+
+$("btn-theme").addEventListener("click", toggleTheme);
+applyThemeIcon();
+
 function setLamp(state) {
   $("lamp").dataset.state = state;
   $("v-readystate").textContent = state;
