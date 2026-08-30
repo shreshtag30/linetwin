@@ -764,7 +764,7 @@ input[type=range] { accent-color: var(--purple); }
 }
 .tb-icon-btn:hover:not(:disabled) { background: var(--purple-soft); color: var(--purple-dark); }
 .tb-icon-btn:disabled { opacity: .4; cursor: not-allowed; }
-.tb-bell { position: relative; cursor: default; }
+.tb-bell { position: relative; }
 .tb-bell-count {
   position: absolute; top: -5px; right: -5px;
   background: var(--red); color: #fff;
@@ -774,10 +774,12 @@ input[type=range] { accent-color: var(--purple); }
   padding: 0 3px;
 }
 .tb-role {
-  font-size: 12px; font-weight: 600; color: var(--ink-soft);
+  font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-soft);
   padding: 5px 12px; border-radius: 999px; background: var(--surface-alt);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line); cursor: pointer;
+  transition: background .14s ease, color .14s ease;
 }
+.tb-role:hover { background: var(--purple-soft); color: var(--purple-dark); }
 
 /* ---------- KPI row ---------- */
 
@@ -829,10 +831,18 @@ input[type=range] { accent-color: var(--purple); }
   font-family: var(--font-mono); font-size: 11px; font-weight: 700;
   border: 2px solid var(--line-strong); color: var(--ink-soft); background: var(--surface);
 }
+/* Matches the legend directly above the map, and the same semantics used
+   everywhere else in this dashboard (.station-card, .legend-swatch):
+   starved = ink-faint/grey, down = orange. REAL BUG, caught by a user
+   looking at the map next to its own legend: these two were swapped here
+   specifically, making every starved station (the dominant state on this
+   line -- see docs/DECISIONS.md's buffer-capacity findings) read as
+   "Down" at a glance, while genuinely rare Down states would have shown
+   as the muted "Starved" grey instead. */
 .fm-node[data-state="working"] .fm-circle { border-color: var(--green); color: var(--green); }
 .fm-node[data-state="blocked"] .fm-circle { border-color: var(--red); color: var(--red); background: var(--red-bg); }
-.fm-node[data-state="starved"] .fm-circle { border-color: var(--orange); color: var(--orange); background: var(--orange-bg); }
-.fm-node[data-state="down"] .fm-circle { border-color: var(--ink-faint); color: var(--ink-faint); }
+.fm-node[data-state="starved"] .fm-circle { border-color: var(--ink-faint); color: var(--ink-faint); }
+.fm-node[data-state="down"] .fm-circle { border-color: var(--orange); color: var(--orange); background: var(--orange-bg); }
 .fm-node.is-bottleneck .fm-circle { box-shadow: 0 0 0 3px var(--purple-line); }
 .fm-arrow { color: var(--ink-faint); font-size: 12px; margin: 0 1px; }
 

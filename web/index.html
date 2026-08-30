@@ -23,7 +23,7 @@
        this a browser's ordinary HTTP cache can keep serving a stale script
        after a deploy indefinitely -- confirmed during this redesign: a plain
        reload kept re-running old cached JS with no console error at all. -->
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
 
@@ -69,11 +69,11 @@
           <span class="tb-updated">Last updated <b id="tb-clock">–</b></span>
           <button class="tb-icon-btn" id="btn-theme" title="Switch between light and dark mode" aria-label="Toggle theme">&#9789;</button>
           <button class="tb-icon-btn" id="btn-help" title="Show the how-it-works panel" aria-label="Help">?</button>
-          <span class="tb-icon-btn tb-bell" id="tb-bell" title="Open alerts">&#128276;<span class="tb-bell-count" id="tb-bell-count" hidden>0</span></span>
+          <button class="tb-icon-btn tb-bell" id="tb-bell" title="Open alerts">&#128276;<span class="tb-bell-count" id="tb-bell-count" hidden>0</span></button>
           <button class="tb-icon-btn" id="btn-kill" title="Close the live connection on purpose, to demonstrate the dashboard freezing without the server.">Kill</button>
           <button class="tb-icon-btn" id="btn-resume" disabled title="Reconnect after Kill.">Resume</button>
           <button class="tb-icon-btn" id="btn-restart" title="Restart the simulation from tick zero with a fresh run.">Restart</button>
-          <span class="tb-role">FS &nbsp;Floor Supervisor</span>
+          <button class="tb-role" id="btn-role" title="Switch persona view — Floor Supervisor / Plant Manager / Leadership">FS &nbsp;Floor Supervisor</button>
         </div>
       </header>
 
@@ -429,6 +429,6 @@
   </div>
 
   <script src="vendor/uplot/uPlot.iife.min.js"></script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

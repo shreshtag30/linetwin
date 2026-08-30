@@ -48,6 +48,7 @@ const disruptionStreak = {}; // station_id -> consecutive ticks BLOCKED/STARVED
 const disruptionAlerted = {}; // station_id -> already alerted for the CURRENT streak?
 let lastSnapshot = null; // most recent snapshot, for capturing "before" state on Apply
 let pendingNarration = null; // {stationId, multiplier, appliedAtTick, beforeBottleneckId, beforeQueue}
+let stationMultipliers = {}; // station_id -> last multiplier APPLIED to it this session (not just dialed)
 
 function $(id) { return document.getElementById(id); }
 
@@ -716,6 +717,7 @@ async function applyControl() {
     if (resp.ok) {
       ackEl.dataset.status = "ok";
       ackEl.textContent = `Applied ${cycle_time_multiplier}× to ${station_id} at tick ${body.applied_at_tick}.`;
+      stationMultipliers[station_id] = cycle_time_multiplier;
 
       renderNarration("What this should do", explainMechanism(station_id, cycle_time_multiplier), false);
       const beforeStation = lastSnapshot
@@ -1185,6 +1187,11 @@ async function restartEngine() {
 $("ctl-mult").addEventListener("input", (e) => {
   $("ctl-mult-val").textContent = `${parseFloat(e.target.value).toFixed(1)}×`;
 });
+$("ctl-station").addEventListener("change", (e) => {
+  const mult = stationMultipliers[e.target.value] ?? 1.0;
+  $("ctl-mult").value = mult;
+  $("ctl-mult-val").textContent = `${mult.toFixed(1)}×`;
+});
 $("ctl-apply").addEventListener("click", applyControl);
 $("btn-kill").addEventListener("click", killStream);
 $("btn-resume").addEventListener("click", resumeStream);
@@ -1198,6 +1205,20 @@ for (const link of document.querySelectorAll(".btn-link[data-goto]")) {
 }
 $("btn-help").addEventListener("click", () => {
   $("intro-panel").open = !$("intro-panel").open;
+});
+$("tb-bell").addEventListener("click", () => switchView("view-alerts-page"));
+
+const ROLE_CYCLE = [
+  { label: "FS  Floor Supervisor", view: "view-overview" },
+  { label: "PM  Plant Manager", view: "view-trends" },
+  { label: "LD  Leadership", view: "view-reports-page" },
+];
+let roleIndex = 0;
+$("btn-role").addEventListener("click", () => {
+  roleIndex = (roleIndex + 1) % ROLE_CYCLE.length;
+  const role = ROLE_CYCLE[roleIndex];
+  $("btn-role").innerHTML = role.label;
+  switchView(role.view);
 });
 
 $("ld-budget").addEventListener("input", (e) => {
