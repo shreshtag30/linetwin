@@ -13,10 +13,11 @@ let es = null;
 let killed = false;
 let stationOrder = [];
 let throughputChart = null;
+let riskChart = null;
 let wipChart = null;
 let pmThroughputChart = null;
 let pmWipChart = null;
-const history = { ticks: [], throughput: [], wip: [] };
+const history = { ticks: [], throughput: [], wip: [], risk: [] };
 const pmHistory = { ticks: [], throughput: [], wip: [] };
 
 // Plant-manager rolling state -- accumulated client-side from the same
@@ -82,6 +83,7 @@ function uplotThemeColors() {
   return {
     ink: cs.getPropertyValue("--ink-soft").trim() || "#595959",
     grid: cs.getPropertyValue("--line").trim() || "#DCDCDC",
+    risk: cs.getPropertyValue("--red").trim() || "#C81E3A",
   };
 }
 
@@ -120,6 +122,7 @@ function connect() {
     history.ticks = [];
     history.throughput = [];
     history.wip = [];
+    history.risk = [];
     pmHistory.ticks = [];
     pmHistory.throughput = [];
     pmHistory.wip = [];
@@ -150,11 +153,12 @@ function connect() {
     // destroy() + null is the only way to guarantee no stale internal state
     // survives a reset; the next snapshot's drawCharts()/drawPmCharts()
     // recreates each chart fresh via their existing `if (!chart)` branch.
-    for (const chart of [throughputChart, wipChart, pmThroughputChart, pmWipChart]) {
+    for (const chart of [throughputChart, wipChart, riskChart, pmThroughputChart, pmWipChart]) {
       if (chart) chart.destroy();
     }
     throughputChart = null;
     wipChart = null;
+    riskChart = null;
     pmThroughputChart = null;
     pmWipChart = null;
   });
@@ -176,13 +180,19 @@ function connect() {
 
 function renderSnapshot(snap) {
   $("v-tick").textContent = snap.tick;
-  $("v-seq").textContent = snap.seq;
   $("v-simtime").textContent = snap.sim_time_s.toFixed(1);
   $("v-rtf").textContent = snap.real_time_factor.toFixed(3);
   $("v-lag").textContent = Math.round(snap.lag_s * 1000);
+  $("v-compute").textContent = snap.tick_compute_ms.toFixed(1);
 
   renderBottleneck(snap.bottleneck);
   renderStations(snap.stations, snap.bottleneck);
+  renderFloorMap(snap.stations, snap.bottleneck);
+  updateKpis(snap);
+  updateCoverage(snap.stations);
+  updateSidebarStatus(snap);
+  updateQualityPage(snap.stations);
+  updateBottleneckPage(snap);
   pushHistory(snap);
   drawCharts();
 
@@ -192,10 +202,318 @@ function renderSnapshot(snap) {
   updateNarrationFollowup(snap);
   lastSnapshot = snap;
 
+  $("tb-clock").textContent = new Date().toLocaleTimeString([], { hour12: false });
+
+  if (firstSimTime === null) firstSimTime = snap.sim_time_s;
+  const uptimeS = snap.sim_time_s - firstSimTime;
+  $("sb-uptime").textContent =
+    `${String(Math.floor(uptimeS / 3600)).padStart(2, "0")}:` +
+    `${String(Math.floor((uptimeS % 3600) / 60)).padStart(2, "0")}:` +
+    `${String(Math.floor(uptimeS % 60)).padStart(2, "0")}`;
+
+  // Genealogy is an HTTP round trip -- throttled to roughly once every 5s
+  // (40 ticks at 8Hz), not fetched every tick like everything else above,
+  // which is all free client-side work off the same stream.
+  if (snap.tick % 40 === 0) fetchGenealogyCandidates();
+
   if (stationOrder.length === 0) {
     stationOrder = snap.stations.map((s) => s.station_id);
     populateStationSelect(stationOrder);
   }
+}
+
+let firstSimTime = null;
+
+function updateKpis(snap) {
+  $("kpi-throughput").textContent = Math.round(snap.line_throughput_uph).toLocaleString();
+  $("kpi-wip").textContent = snap.wip;
+
+  const cycleTimes = snap.stations.map((s) => s.cycle_time_s.value).filter((v) => v != null);
+  $("kpi-cycle").textContent = cycleTimes.length
+    ? (cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length).toFixed(1)
+    : "–";
+
+  $("kpi-blocked").textContent = snap.stations.filter((s) => s.state === "blocked").length;
+  $("kpi-starved").textContent = snap.stations.filter((s) => s.state === "starved").length;
+
+  const risks = snap.stations.map((s) => (s.defect_risk ? s.defect_risk.value : null)).filter((v) => v != null);
+  const meanRisk = risks.length ? risks.reduce((a, b) => a + b, 0) / risks.length : null;
+  const riskKpi = $("kpi-risk");
+  if (meanRisk === null) {
+    $("kpi-risk").textContent = "–";
+    $("kpi-risk-tag").textContent = "no model";
+  } else {
+    $("kpi-risk").textContent = `${(meanRisk * 100).toFixed(2)}%`;
+    const level = riskThreshold != null && meanRisk >= riskThreshold * 2 ? "crit"
+      : riskThreshold != null && meanRisk >= riskThreshold ? "warn" : "ok";
+    riskKpi.dataset.level = level;
+    $("kpi-risk-tag").textContent = level === "ok" ? "Normal" : level === "warn" ? "Elevated" : "High";
+  }
+}
+
+function updateSidebarStatus(snap) {
+  $("sb-engine-status").textContent = snap.status === "running" ? "Running" : snap.status === "faulted" ? "Faulted" : "Paused";
+  $("sb-engine-status").className = snap.status === "running" ? "sb-ok" : "";
+  $("sb-rtf").textContent = snap.real_time_factor.toFixed(2);
+}
+
+/* ---------------------------------------------------------------------
+ * Floor map -- zone-grouped circular station indicators, replacing the
+ * card-grid look with the arrow-flow reference the user shared. Reuses
+ * the exact same per-station data `renderStations` already consumes for
+ * the Stations page; this is a second, denser view of the same data, not
+ * a second source of truth.
+ * ------------------------------------------------------------------- */
+
+let selectedFloorStation = null;
+
+function renderFloorMap(stations, bottleneck) {
+  const byZone = {};
+  for (const st of stations) (byZone[st.zone] ||= []).push(st);
+  const bottleneckId = bottleneck ? bottleneck.station_id : null;
+
+  const el = $("floor-map");
+  el.innerHTML = "";
+  for (const zone of ZONE_ORDER) {
+    const zoneStations = byZone[zone];
+    if (!zoneStations) continue;
+    const block = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "fm-zone-title";
+    title.textContent = `${zone} — ${zoneStations.length} stations`;
+    const row = document.createElement("div");
+    row.className = "fm-row";
+    zoneStations.forEach((st, i) => {
+      const node = buildFmNode(st, st.station_id === bottleneckId);
+      row.appendChild(node);
+      if (i < zoneStations.length - 1) {
+        const arrow = document.createElement("span");
+        arrow.className = "fm-arrow";
+        arrow.textContent = "→";
+        row.appendChild(arrow);
+      }
+    });
+    block.appendChild(title);
+    block.appendChild(row);
+    el.appendChild(block);
+  }
+}
+
+function buildFmNode(st, isBottleneck) {
+  const node = document.createElement("div");
+  const displayState = ["down", "repair", "setup"].includes(st.state) ? "down" : st.state;
+  node.className = "fm-node" + (isBottleneck ? " is-bottleneck" : "") + (st.station_id === selectedFloorStation ? " is-selected" : "");
+  node.dataset.state = displayState;
+  node.innerHTML = `<span class="fm-circle">${st.station_id.replace("S", "")}</span>`;
+  node.title = `${st.station_id} — ${st.state}`;
+  node.addEventListener("click", () => {
+    selectedFloorStation = st.station_id;
+    renderStationDetailBar(st);
+    if (lastSnapshot) renderFloorMap(lastSnapshot.stations, lastSnapshot.bottleneck);
+  });
+  return node;
+}
+
+function renderStationDetailBar(st) {
+  $("station-detail-bar").querySelector("h3").textContent = `Station Details — ${st.station_id}`;
+  $("sd-cycle").textContent = st.cycle_time_s.value != null ? `${st.cycle_time_s.value.toFixed(1)}s` : "—";
+  $("sd-queue").textContent = `${st.queue_depth} / ${st.buffer_capacity}`;
+  $("sd-state").textContent = st.state;
+  $("sd-source").textContent = st.instrumented ? "Observed" : "Inferred";
+  $("sd-confidence").textContent = st.instrumented
+    ? "100%"
+    : st.cycle_time_s.sensor_share != null
+      ? `${Math.round(st.cycle_time_s.sensor_share * 100)}% sensor-derived`
+      : "—";
+}
+
+function updateCoverage(stations) {
+  const instrumented = stations.filter((s) => s.instrumented).length;
+  const dark = stations.length - instrumented;
+  const frac = instrumented / stations.length;
+  const donut = $("coverage-donut");
+  donut.style.background = `conic-gradient(var(--purple) 0 ${(frac * 360).toFixed(1)}deg, var(--orange) 0 360deg)`;
+  $("coverage-pct").textContent = `${Math.round(frac * 100)}%`;
+  $("coverage-legend").innerHTML = `
+    <li><span class="cl-swatch" style="background:var(--purple)"></span>Observed <b>${instrumented} / ${stations.length}</b></li>
+    <li><span class="cl-swatch" style="background:var(--orange)"></span>Inferred <b>${dark} / ${stations.length}</b></li>
+  `;
+}
+
+/* ---------------------------------------------------------------------
+ * Quality & Defects page -- per-station live risk ranking + driver
+ * explanation. Same null-safety discipline as updateLeadership above:
+ * `defect_risk` can be entirely null before Model B's first scoring tick.
+ * ------------------------------------------------------------------- */
+
+let selectedRiskStationId = null;
+
+function updateQualityPage(stations) {
+  const list = $("risk-list");
+  if (!list) return;
+  const rv = (s) => (s.defect_risk ? s.defect_risk.value : null);
+  const sorted = [...stations].sort((a, b) => (rv(b) ?? -1) - (rv(a) ?? -1));
+  if (!selectedRiskStationId && sorted.length) selectedRiskStationId = sorted[0].station_id;
+
+  list.innerHTML = sorted.map((s) => {
+    const v = rv(s);
+    const level = riskThreshold == null ? "ok" : v == null ? "ok" : v >= riskThreshold * 2 ? "crit" : v >= riskThreshold ? "warn" : "ok";
+    const barWidth = v != null ? Math.min(100, v * 1000).toFixed(0) : 0;
+    return `<div class="risk-row ${s.station_id === selectedRiskStationId ? "is-selected" : ""}" data-station-id="${s.station_id}">
+      <span class="risk-id">${s.station_id}</span>
+      <div class="risk-bar-track"><div class="risk-bar-fill" data-level="${level}" style="width:${barWidth}%"></div></div>
+      <span class="risk-pct">${v != null ? (v * 100).toFixed(2) + "%" : "—"}</span>
+      <span class="risk-tag">${s.instrumented ? "observed" : "inferred"}</span>
+    </div>`;
+  }).join("");
+
+  for (const row of list.querySelectorAll(".risk-row")) {
+    row.addEventListener("click", () => {
+      selectedRiskStationId = row.dataset.stationId;
+      if (lastSnapshot) updateQualityPage(lastSnapshot.stations);
+    });
+  }
+
+  const selected = stations.find((s) => s.station_id === selectedRiskStationId);
+  if (selected) renderRiskExplain(selected);
+}
+
+function renderRiskExplain(station) {
+  $("explain-title").textContent = `${station.station_id} — contributing factors`;
+  const body = $("explain-body");
+  const drivers = station.risk_drivers || [];
+  if (!drivers.length) {
+    body.innerHTML = '<p class="panel-sub">No driver data yet for this station.</p>';
+    return;
+  }
+  const maxAbs = Math.max(...drivers.map((d) => Math.abs(d.contribution)), 0.001);
+  body.innerHTML = drivers.map((d) => {
+    const width = (Math.abs(d.contribution) / maxAbs * 100).toFixed(0);
+    const negative = d.contribution < 0;
+    return `<div class="driver-row">
+      <span class="driver-name">${d.feature}</span>
+      <div class="driver-bar-track"><div class="driver-bar-fill ${negative ? "is-negative" : ""}" style="width:${width}%"></div></div>
+      <span class="driver-pct">${negative ? "−" : "+"}${Math.abs(d.contribution).toFixed(2)}</span>
+    </div>`;
+  }).join("");
+}
+
+/* ---------------------------------------------------------------------
+ * Bottleneck full page -- cycle-time-by-station bars + the rolling-
+ * horizon forecast comparison. Same real per-tick data the compact
+ * overview panel and Plant Manager's predicted-downtime card already use.
+ * ------------------------------------------------------------------- */
+
+function updateBottleneckPage(snap) {
+  const chart = $("bp-cycle-chart");
+  if (!chart) return;
+  const bn = snap.bottleneck;
+  const sorted = [...snap.stations].sort((a, b) => (b.cycle_time_s.value ?? 0) - (a.cycle_time_s.value ?? 0)).slice(0, 10);
+  const maxCycle = Math.max(...sorted.map((s) => s.cycle_time_s.value ?? 0), 1);
+  chart.innerHTML = sorted.map((s) => {
+    const isBn = bn && s.station_id === bn.station_id;
+    const v = s.cycle_time_s.value ?? 0;
+    return `<div class="rank-row">
+      <span class="rank-id">${s.station_id}</span>
+      <div class="risk-bar-track" style="flex:1"><div class="risk-bar-fill" data-level="${isBn ? "crit" : "ok"}" style="width:${(v / maxCycle * 100).toFixed(0)}%"></div></div>
+      <span class="rank-conf">${v.toFixed(0)}s</span>
+    </div>`;
+  }).join("");
+
+  const compare = $("bp-predict-compare");
+  const pred = snap.predicted_bottleneck;
+  if (!pred || !pred.station_id) {
+    compare.innerHTML = '<p class="panel-sub">No forecast available yet.</p>';
+  } else {
+    const shifting = bn && bn.station_id && pred.station_id !== bn.station_id;
+    compare.innerHTML = `
+      <div class="rank-row"><span class="rank-reason">Current</span><span class="rank-id">${bn && bn.station_id ? bn.station_id : "—"}</span></div>
+      <div class="rank-row"><span class="rank-reason">Predicted (~30 min ahead)</span><span class="rank-id">${pred.station_id}</span></div>
+      ${shifting ? '<p class="panel-sub" style="color:var(--orange);margin-top:8px">Forecast disagrees with the current verdict — a shift may be coming.</p>' : ""}
+    `;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Defect genealogy -- diagnostic/genealogy.py's first wiring into the
+ * PRIMARY dashboard (it already has a real API surface, added for the
+ * Control Center prototype: GET /api/twin/genealogy/candidates and
+ * GET /api/twin/genealogy/{unit_id}). Throttled in renderSnapshot to
+ * roughly once every 5s, since this is an HTTP round trip, unlike every
+ * other panel on this page which is free client-side work off one stream.
+ * ------------------------------------------------------------------- */
+
+async function fetchGenealogyCandidates() {
+  try {
+    const res = await fetch("/api/twin/genealogy/candidates?limit=10");
+    const data = await res.json();
+    renderGenealogyCandidateList(data.candidates);
+    if (data.candidates.length) await traceUnit(data.candidates[0].unit_id, true);
+  } catch {
+    /* transient network hiccup -- next throttled tick tries again */
+  }
+}
+
+function renderGenealogyCandidateList(candidates) {
+  const list = $("rc-candidates");
+  if (!list) return;
+  if (!candidates.length) {
+    list.innerHTML = '<p class="panel-sub">Not enough completed units yet — check back shortly.</p>';
+    return;
+  }
+  list.innerHTML = candidates.map((c, i) => `
+    <div class="rank-row is-clickable" data-unit-id="${c.unit_id}">
+      <span class="rank-num">${i + 1}</span>
+      <span class="rank-id">#${c.unit_id}</span>
+      <span class="rank-reason">Peak z-score ${c.peak_z_score.toFixed(2)} at ${c.peak_station_id}</span>
+      <span class="rank-conf">trace →</span>
+    </div>
+  `).join("");
+  for (const row of list.querySelectorAll(".rank-row")) {
+    row.addEventListener("click", () => traceUnit(row.dataset.unitId, false));
+  }
+}
+
+async function traceUnit(unitId, compactOnly) {
+  let r;
+  try {
+    const res = await fetch(`/api/twin/genealogy/${unitId}`);
+    if (!res.ok) return;
+    r = await res.json();
+  } catch {
+    return;
+  }
+
+  const flowHtml = buildGenealogyFlowHtml(r);
+
+  const compact = $("genealogy-compact");
+  if (compact) {
+    compact.innerHTML = `
+      <div class="rc-flow">${flowHtml}</div>
+      <p class="panel-sub">Unit #${r.defect_unit_id} → likely origin <b>${r.origin_station_id}</b>
+        (${Math.round(r.confidence * 100)}% confidence)</p>
+    `;
+  }
+
+  if (compactOnly) return;
+
+  $("rc-flow-panel").hidden = false;
+  $("rc-unit-id").textContent = `#${r.defect_unit_id}`;
+  $("rc-origin").textContent = r.origin_station_id;
+  $("rc-confidence").textContent = `${Math.round(r.confidence * 100)}%`;
+  $("rc-affected").textContent = `${r.affected_unit_ids.length} units`;
+  $("rc-realigned").textContent = `${r.origin_realigned_time_s.toFixed(1)}s (sim time)`;
+  $("rc-flow").innerHTML = flowHtml;
+}
+
+function buildGenealogyFlowHtml(r) {
+  const nodes = ['<span class="rc-node is-detect">Final inspection</span>'];
+  for (let i = r.path.length - 1; i >= 0; i--) {
+    nodes.push('<span class="rc-arrow">←</span>');
+    const isOrigin = r.path[i] === r.origin_station_id;
+    nodes.push(`<span class="rc-node${isOrigin ? " is-origin" : ""}">${r.path[i]}</span>`);
+  }
+  return nodes.join("");
 }
 
 function renderBottleneck(bn) {
@@ -213,6 +531,14 @@ function renderBottleneck(bn) {
   $("bn-confidence").dataset.level = bn.confidence;
   $("bn-runnerup").textContent = bn.runner_up_id || "–";
   $("bn-explanation").textContent = bn.explanation || "";
+
+  // The bar reflects the CATEGORY, not a fabricated precise percentage --
+  // bn.confidence is "provisional"/"established"/"none", never a number
+  // (bottleneck.py's significance_annotation only ever returns those three
+  // words). Three fixed widths standing in for three known states is
+  // honest; inventing a number like "92%" from a category would not be.
+  const confFillPct = bn.confidence === "established" ? 90 : bn.confidence === "provisional" ? 45 : 10;
+  $("bn-conf-fill").style.width = `${confFillPct}%`;
 
   const modeEl = $("bn-mode");
   modeEl.innerHTML = "";
@@ -294,13 +620,18 @@ function renderStationCard(st, isBottleneck) {
 }
 
 function pushHistory(snap) {
+  const risks = snap.stations.map((s) => (s.defect_risk ? s.defect_risk.value : null)).filter((v) => v != null);
+  const meanRisk = risks.length ? risks.reduce((a, b) => a + b, 0) / risks.length : 0;
+
   history.ticks.push(snap.tick);
   history.throughput.push(snap.line_throughput_uph);
   history.wip.push(snap.wip);
+  history.risk.push(meanRisk);
   if (history.ticks.length > HISTORY_LEN) {
     history.ticks.shift();
     history.throughput.shift();
     history.wip.shift();
+    history.risk.shift();
   }
 }
 
@@ -338,6 +669,23 @@ function drawCharts() {
     );
   } else {
     wipChart.setData(wipData);
+  }
+
+  const riskData = [history.ticks, history.risk];
+  if (!riskChart) {
+    riskChart = new uPlot(
+      {
+        width: 380,
+        height: 160,
+        series: [{}, { stroke: uplotThemeColors().risk, width: 2 }],
+        scales: { x: { time: false } },
+        axes: themedAxes(),
+      },
+      riskData,
+      $("chart-risk")
+    );
+  } else {
+    riskChart.setData(riskData);
   }
 }
 
@@ -561,6 +909,7 @@ function rebuildChartsForThemeChange() {
   for (const [chart, setter] of [
     [throughputChart, (c) => { throughputChart = c; }],
     [wipChart, (c) => { wipChart = c; }],
+    [riskChart, (c) => { riskChart = c; }],
     [pmThroughputChart, (c) => { pmThroughputChart = c; }],
     [pmWipChart, (c) => { pmWipChart = c; }],
   ]) {
@@ -656,13 +1005,23 @@ function pushAlert(severity, title, detail, tick) {
 }
 
 function renderAlerts() {
-  const el = $("alerts-list");
-  if (alerts.length === 0) {
+  renderAlertsInto("alerts-list", alerts);
+  renderAlertsInto("alerts-list-compact", alerts.slice(0, 5));
+
+  const bellCount = $("tb-bell-count");
+  bellCount.textContent = alerts.length > 99 ? "99+" : String(alerts.length);
+  bellCount.hidden = alerts.length === 0;
+}
+
+function renderAlertsInto(elementId, list) {
+  const el = $(elementId);
+  if (!el) return;
+  if (list.length === 0) {
     el.innerHTML = '<p class="panel-sub">No alerts yet — the line is running normally.</p>';
     return;
   }
   el.innerHTML = "";
-  for (const a of alerts) {
+  for (const a of list) {
     const row = document.createElement("div");
     row.className = "alert-row";
     row.dataset.severity = a.severity;
@@ -805,11 +1164,11 @@ function updateNarrationFollowup(snap) {
  * ------------------------------------------------------------------- */
 
 function switchView(viewId) {
-  for (const view of document.querySelectorAll(".persona-view")) {
+  for (const view of document.querySelectorAll(".view")) {
     view.hidden = view.id !== viewId;
   }
-  for (const tab of document.querySelectorAll(".persona-tab")) {
-    tab.classList.toggle("is-active", tab.dataset.view === viewId);
+  for (const item of document.querySelectorAll(".sb-item")) {
+    item.classList.toggle("is-active", item.dataset.view === viewId);
   }
 }
 
@@ -831,9 +1190,15 @@ $("btn-kill").addEventListener("click", killStream);
 $("btn-resume").addEventListener("click", resumeStream);
 $("btn-restart").addEventListener("click", restartEngine);
 
-for (const tab of document.querySelectorAll(".persona-tab")) {
-  tab.addEventListener("click", () => switchView(tab.dataset.view));
+for (const item of document.querySelectorAll(".sb-item")) {
+  item.addEventListener("click", () => switchView(item.dataset.view));
 }
+for (const link of document.querySelectorAll(".btn-link[data-goto]")) {
+  link.addEventListener("click", () => switchView(link.dataset.goto));
+}
+$("btn-help").addEventListener("click", () => {
+  $("intro-panel").open = !$("intro-panel").open;
+});
 
 $("ld-budget").addEventListener("input", (e) => {
   $("ld-budget-val").textContent = e.target.value;
