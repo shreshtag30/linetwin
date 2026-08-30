@@ -25,7 +25,16 @@ from twin.contracts import StationState, UnitEvent
 from twin.sim.line import LineConfig, build_line
 
 SCENARIO = Path(__file__).resolve().parents[1] / "scenarios" / "line30.yaml"
-DURATION_S = 6000.0  # long enough for flow to reach and back up past S17
+# 20,000s, not 6,000s: found necessary after the zone-rebalancing and arrival-
+# slack fixes (docs/phases/phase-05-detector-benchmark.md's addendum) made
+# S17's engineered dominance more modest relative to a properly-balanced,
+# realistically-slacked line -- backpressure onto S16 still appears reliably,
+# it just needs more simulated time to build up. Verified directly: 0s
+# blocked at 6,000s, 1,861s blocked at 20,000s, monotonically increasing in
+# between -- this is the same pipeline-fill-time effect this file's own
+# module docstring already warns about, not a broken cascade mechanism.
+# Matches ground_truth.py's own established _MIN_SAFE_DURATION_S.
+DURATION_S = 20_000.0
 
 
 def test_scenario_loads_with_the_committed_topology() -> None:

@@ -39,6 +39,14 @@ from twin.sim.station import Station
 # other timing parameter in this project (docs/CITATIONS.md).
 CONVEYOR_TRANSFER_DELAY_S = 4.0
 
+# See _source()'s docstring: paces the arrival source slightly slower than
+# the first station's own mean cycle time, giving the line real slack instead
+# of running at exactly 100% capacity. `synthetic -- uncalibrated`; verified
+# directly (not assumed) to remove a structural detection artifact where S01
+# wins bottleneck-detector picks by being immune to starvation, not by being
+# genuinely disrupted.
+ARRIVAL_SLACK_FACTOR = 1.08
+
 
 @dataclass
 class _Part:
@@ -234,16 +242,35 @@ class Line:
         because an artificially-never-starved S01 accumulates long active
         periods just like a genuine bottleneck does.
 
-        Fixed: arrivals are paced with the same lognormal sampling used
-        everywhere else in this line, at the first zone's own (mean, cv) --
-        modelling an upstream supply process with its own natural variability,
-        rather than an unconstrained tap. `synthetic -- uncalibrated`, same as
-        every other timing parameter in this project; what would calibrate it
-        is the arrival-rate distribution of the actual upstream process (parts
+        Fixed (Phase 5): arrivals are paced with the same lognormal sampling
+        used everywhere else in this line, at the first zone's own (mean, cv)
+        -- modelling an upstream supply process with its own natural
+        variability, rather than an unconstrained tap.
+
+        REAL BUG, found much later (post-Phase-10): that fix's own docstring
+        already recorded that it was incomplete -- "the production momentary
+        Active Period Method split its pick between S01 and the true
+        bottleneck S17 roughly 54%/45%." Pacing the source at EXACTLY the
+        first station's own mean cycle time (zero slack) means the arrival
+        rate equals the service rate on average -- a critically loaded queue
+        (utilization -> saturation) with no slack, in which S01 is
+        structurally immune to starvation (it always has the paced source
+        behind it) even though it CAN still be blocked. Once a separate,
+        larger confound (uneven zone-to-zone base cycle times) was found and
+        fixed, this smaller one -- previously masked by the larger one --
+        became visible on its own: S01 won 9 of 10 detector picks in a fresh
+        multi-scenario test. `ARRIVAL_SLACK_FACTOR` gives the source a modest
+        margin below the line's own processing capacity, matching real
+        production-line practice (a line is deliberately paced with headroom,
+        not run at exactly 100% capacity) -- verified directly to remove
+        S01's artifact without materially changing engineered-bottleneck
+        detection elsewhere. `synthetic -- uncalibrated`, same as every other
+        timing parameter in this project; what would calibrate it is the
+        arrival-rate distribution of the actual upstream process (parts
         kitting, prior line segment, etc.), which this project does not have.
         """
         first_station = self.config.station_ids[0]
-        arrival_mean = self.config.base_cycle_time_of[first_station]
+        arrival_mean = self.config.base_cycle_time_of[first_station] * ARRIVAL_SLACK_FACTOR
         arrival_cv = self.config.cv_of[first_station]
 
         while True:

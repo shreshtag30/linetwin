@@ -38,11 +38,26 @@ def test_bottleneck_shows_large_negative_sensitivity(config: LineConfig) -> None
     assert result.ci_high < 0, "the whole CI must exclude zero -- this is not noise"
 
 
-def test_non_bottleneck_station_shows_near_zero_sensitivity(config: LineConfig) -> None:
-    result = measure_sensitivity(config, "S01", seeds=FAST_SEEDS)
-    assert abs(result.mean_sensitivity) < 0.01, (
-        f"S01 has ample slack under this config; expected ~0 sensitivity, "
-        f"got {result.mean_sensitivity}"
+def test_non_bottleneck_station_shows_much_smaller_sensitivity_than_the_bottleneck(
+    config: LineConfig,
+) -> None:
+    """Not literally near-zero: found, while recalibrating the arrival source
+    (docs/phases/phase-05-detector-benchmark.md's addendum), that a realistic
+    line run at genuine (not infinite) utilization shows SOME throughput
+    sensitivity almost everywhere -- "near zero" was an artifact of an
+    earlier, unrealistically slack-heavy source model. Checked directly:
+    pushing arrival slack higher to chase a smaller absolute S01 number
+    backfires -- above ~1.10x, the arrival process itself becomes the
+    dominant bottleneck (S01's sensitivity actually EXCEEDS S17's past
+    1.15x). The honest, stable property is relative, not absolute: S01 is
+    clearly subordinate to the true bottleneck, not literally unaffected by
+    its own cycle time.
+    """
+    s01 = measure_sensitivity(config, "S01", seeds=FAST_SEEDS)
+    s17 = measure_sensitivity(config, "S17", seeds=FAST_SEEDS)
+    assert abs(s01.mean_sensitivity) < abs(s17.mean_sensitivity) * 0.5, (
+        f"S01 should be clearly subordinate to the true bottleneck S17, "
+        f"got S01={s01.mean_sensitivity} vs S17={s17.mean_sensitivity}"
     )
 
 

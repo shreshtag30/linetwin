@@ -40,6 +40,14 @@ class LineRunStats:
     duration: float
     station_order: list[str]
     stations: dict[str, StationRunStats]
+    # Each station's zone-configured, UNPERTURBED base cycle time -- needed to
+    # normalize a station's active-period duration by its own baseline pace
+    # (score_active_period_normalized, detectors.py). Deliberately the STATIC
+    # config value, not this run's own observed mean cycle time: a station's
+    # observed cycle time already reflects any live perturbation applied to
+    # IT, so normalizing by that would divide out the exact slowdown signal
+    # detection is supposed to find.
+    base_cycle_time_of: dict[str, float]
 
 
 def run_for_analysis(
@@ -89,7 +97,12 @@ def run_for_analysis(
             cycle_times=[c for _, c in comp],
         )
 
-    return LineRunStats(duration=duration, station_order=run_config.station_ids, stations=stations)
+    return LineRunStats(
+        duration=duration,
+        station_order=run_config.station_ids,
+        stations=stations,
+        base_cycle_time_of=dict(run_config.base_cycle_time_of),
+    )
 
 
 __all__ = ["DEFAULT_QUEUE_SAMPLE_DT", "LineRunStats", "StationRunStats", "run_for_analysis"]

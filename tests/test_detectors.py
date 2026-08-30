@@ -44,44 +44,86 @@ def config() -> LineConfig:
     return LineConfig.from_yaml(SCENARIO)
 
 
-@pytest.mark.parametrize("seed", [1, 2, 3, 4, 5])
-def test_utilization_active_period_busy_ratio_turning_point_all_pick_s17(
-    config: LineConfig, seed: int
+def test_utilization_active_period_busy_ratio_turning_point_mostly_pick_s17(
+    config: LineConfig,
 ) -> None:
-    """The four methods found to be robust across all five seeds during
-    Phase 5 groundwork. If any of these regresses on a future change to the
-    scenario or the simulation core, this must fail loudly.
+    """Correction, found much later (post-Phase-10): the original "all four
+    always pick S17 across 5 seeds" was true under a scenario later found to
+    have S17 riding a compounding, undocumented advantage -- paint zone's own
+    inherently longer baseline cycle time, stacked on top of the deliberately
+    engineered 1.15x multiplier (docs/phases/phase-05-detector-benchmark.md's
+    addendum). With zones rebalanced, S17's true sensitivity-analysis margin
+    over its closest competitors (S19, S16, S20, S29) is genuinely narrow --
+    their confidence intervals now overlap. A detector occasionally preferring
+    a real near-tie competitor is honest behavior, not a regression; a
+    detector regressing to S01 or S12 (the two confounds already found and
+    fixed) would be.
     """
-    stats = run_for_analysis(config, seed=seed, duration=DURATION_S)
-    results = {r.name: r for r in run_all_detectors(stats)}
+    picks: dict[str, list[str]] = {
+        "utilization": [],
+        "active_period": [],
+        "busy_ratio": [],
+        "turning_point": [],
+    }
+    for seed in [1, 2, 3, 4, 5]:
+        stats = run_for_analysis(config, seed=seed, duration=DURATION_S)
+        results = {r.name: r for r in run_all_detectors(stats)}
+        for name in picks:
+            picks[name].append(results[name].top_pick)
 
-    assert results["utilization"].top_pick == "S17"
-    assert results["active_period"].top_pick == "S17"
-    assert results["busy_ratio"].top_pick == "S17"
-    assert results["turning_point"].top_pick == "S17"
+    for name, seed_picks in picks.items():
+        # Occasional (at most 1/5), not systemic: the arrival-slack fix
+        # greatly reduces but does not fully zero out S01's residual
+        # sensitivity (verified directly -- pushing slack higher to chase a
+        # smaller number backfires, see test_ground_truth.py's companion
+        # correction). S01 winning most/all seeds would indicate a real
+        # regression; winning one of five is the expected residual.
+        assert seed_picks.count("S01") <= 1, f"{name} regressed to the S01 confound: {seed_picks}"
+        assert "S12" not in seed_picks, f"{name} regressed to the S12 confound: {seed_picks}"
+        correct = sum(1 for p in seed_picks if p == "S17")
+        assert correct >= 3, f"{name}: expected at least 3/5 correct, got {correct}/5: {seed_picks}"
 
 
-def test_queue_length_consistently_misses_in_the_documented_way(config: LineConfig) -> None:
-    """Queue Length's failure is not random noise -- it consistently and
-    specifically picks S12 (immediately upstream of the bottleneck's zone),
-    which is the real, cited weakness of the method, not a bug in this
-    implementation.
+def test_queue_length_is_now_mostly_correct_after_removing_two_confounds(
+    config: LineConfig,
+) -> None:
+    """Correction, found much later (post-Phase-10): Queue Length's
+    consistent 100%-wrong pick of S12 was NOT an intrinsic weakness of the
+    method, as originally documented -- it was an artifact of two confounds
+    found by testing detector generalization against multiple distinct
+    engineered bottlenecks (docs/phases/phase-05-detector-benchmark.md's
+    addendum): uneven zone-to-zone base cycle times, and an unpaced arrival
+    source. With both fixed, Queue Length picks the true bottleneck S17 in
+    the overwhelming majority of seeds -- an occasional miss to S19 (a
+    genuine close competitor per the sensitivity-analysis ground truth, not
+    a structural artifact) is expected and honest, not evidence of a
+    remaining bug.
     """
-    picks = set()
-    for seed in [1, 2, 3]:
+    picks = []
+    for seed in [1, 2, 3, 4, 5]:
         stats = run_for_analysis(config, seed=seed, duration=DURATION_S)
         result = next(r for r in run_all_detectors(stats) if r.name == "queue_length")
-        picks.add(result.top_pick)
+        picks.append(result.top_pick)
         assert result.top_pick != "S01", (
-            "S01 must not be picked -- that would indicate the fixed source-model "
-            "artifact has regressed"
+            "S01 must not be picked -- that would indicate the arrival-slack fix "
+            "(line.py's ARRIVAL_SLACK_FACTOR) has regressed"
         )
-    assert picks == {"S12"}, f"expected a consistent (if wrong) pick of S12, got {picks}"
+        assert result.top_pick != "S12", (
+            "S12 must not be picked -- that would indicate the zone-rebalancing fix "
+            "(scenarios/line30.yaml's equal base_cycle_time_s) has regressed"
+        )
+
+    correct = sum(1 for p in picks if p == "S17")
+    assert correct >= 4, f"expected at least 4/5 correct after both fixes, got {correct}/5: {picks}"
 
 
-def test_arrow_is_measurably_unstable_across_seeds(config: LineConfig) -> None:
-    """Documents the instability directly: neither 'always right' nor
-    'always wrong', which is itself the honest characterization.
+def test_arrow_is_now_stable_after_removing_the_zone_confound(config: LineConfig) -> None:
+    """Correction, found much later (post-Phase-10): Arrow's documented
+    instability (contesting S17 vs S13) was itself an artifact of paint
+    zone's inherently longer baseline cycle time (fixed in
+    scenarios/line30.yaml -- see the phase-05 addendum), not an intrinsic
+    property of the method. With zones rebalanced, Arrow is fully stable
+    across these 5 seeds.
     """
     picks = []
     for seed in [1, 2, 3, 4, 5]:
@@ -89,9 +131,7 @@ def test_arrow_is_measurably_unstable_across_seeds(config: LineConfig) -> None:
         result = next(r for r in run_all_detectors(stats) if r.name == "arrow")
         picks.append(result.top_pick)
 
-    correct = sum(1 for p in picks if p == "S17")
-    assert set(picks) <= {"S17", "S13"}, f"expected only the two known contenders, got {picks}"
-    assert 1 <= correct <= 4, f"expected genuine instability (neither 0/5 nor 5/5), got {correct}/5"
+    assert picks == ["S17"] * 5, f"expected Arrow to be stable and correct now, got {picks}"
 
 
 def test_evaluate_all_reports_mse_only_for_scored_detectors(config: LineConfig) -> None:
@@ -126,3 +166,62 @@ def test_the_best_continuous_detector_beats_queue_length_on_mse(config: LineConf
     scores = {s.name: s for s in evaluate_all(detector_results, ground_truth)}
 
     assert scores["active_period"].mse < scores["queue_length"].mse
+
+
+def test_active_period_normalized_also_picks_s17(config: LineConfig) -> None:
+    """The normalized variant must remain at least as good as the raw one on
+    the scenario it was already correct on -- normalization should not
+    introduce a regression where none existed.
+    """
+    stats = run_for_analysis(config, seed=1, duration=DURATION_S)
+    results = {r.name: r for r in run_all_detectors(stats)}
+    assert results["active_period_normalized"].top_pick == "S17"
+
+
+def test_normalizing_by_baseline_cycle_time_fixes_a_naturally_slow_station_bias() -> None:
+    """REAL BUG this detector variant fixes, found by testing multiple
+    distinct engineered bottleneck scenarios rather than replicating one:
+    `score_active_period` picks whichever station's active periods are
+    longest in ABSOLUTE seconds, which a station with an inherently long
+    baseline cycle time can win without being anywhere near the actual
+    bottleneck. Concretely, in the multi-scenario benchmark, a paint-zone
+    station (long baseline cycle time) was picked over the true bottleneck
+    in final assembly (short baseline cycle time) by every raw-duration
+    detector. Reproduced here as a minimal, deterministic, hand-built case
+    rather than the full expensive multi-zone simulation:
+
+    Station A: base cycle time 100s, active periods averaging 120s -- only
+    1.2x its own normal pace, but 120s is the larger ABSOLUTE number.
+
+    Station B: base cycle time 20s, active periods averaging 80s -- 4x its
+    own normal pace, the genuinely anomalous station, despite 80s < 120s.
+
+    Raw duration must (wrongly) pick A; the normalized variant must (rightly)
+    pick B.
+    """
+    from twin.diagnostic.detectors import score_active_period, score_active_period_normalized
+    from twin.diagnostic.run_stats import LineRunStats, StationRunStats
+
+    def _station(sid: str, active_durations: list[float]) -> StationRunStats:
+        periods = [(0.0, d) for d in active_durations]  # (start, end) pairs; only the span matters
+        return StationRunStats(
+            station_id=sid,
+            time_in_state={},
+            active_periods=periods,
+            mean_input_queue_depth=0.0,
+            completion_timestamps=[],
+            cycle_times=[],
+        )
+
+    stats = LineRunStats(
+        duration=1000.0,
+        station_order=["A", "B"],
+        stations={
+            "A": _station("A", [120.0, 120.0, 120.0]),
+            "B": _station("B", [80.0, 80.0, 80.0]),
+        },
+        base_cycle_time_of={"A": 100.0, "B": 20.0},
+    )
+
+    assert score_active_period(stats).top_pick == "A"  # the bug: absolute duration picks A
+    assert score_active_period_normalized(stats).top_pick == "B"  # the fix: relative pace picks B

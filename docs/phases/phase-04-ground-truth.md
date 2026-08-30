@@ -123,3 +123,36 @@ against a ground truth their study never had access to.
 Arrow, Turning Point, Queue Length, Utilization) behind one interface and score every one of them
 against this phase's ground truth — settling the Kumbhar-vs-APM disagreement empirically, on our own
 line, for the first time either side of that disagreement has had access to a real answer.
+
+---
+
+## Addendum, found much later (post-Phase-10): the "~7×, non-overlapping" margin was itself an artifact
+
+Testing detector generalization against multiple distinct engineered bottlenecks (Phase 5's own
+addendum) traced a real confound back to this phase's own committed `ground_truth.csv`: **all 12
+body-zone stations (S01–S12) show the exact same sensitivity value, `-0.002667`, to eleven decimal
+places.** That is not a coincidence — it is the fingerprint of a saturation artifact. `scenarios/
+line30.yaml`'s three zones had different base cycle times (body 45.0s, paint 65.0s, final 55.0s), so
+body zone was chronically BLOCKED behind a structurally slower paint zone regardless of which specific
+body-zone station was perturbed — a zone-wide ceiling that made every body-zone station's own cycle
+time functionally irrelevant to overall throughput, and therefore statistically indistinguishable from
+its 11 neighbors. S17's ~7× lead over the runner-up was riding this same effect: paint zone's inherent
+slowness was compounding with the deliberately engineered 1.15× multiplier, not something the multiplier
+alone produced.
+
+**Fixed**: rebalanced all three zones to an equal 50.0s base cycle time (`scenarios/line30.yaml`), and
+separately found and fixed a second, smaller confound in the arrival source (`line.py`'s
+`ARRIVAL_SLACK_FACTOR`). Both are detailed in Phase 5's addendum, which is where this was actually
+found and diagnosed.
+
+**Re-run under the corrected scenario** (`tools/run_sensitivity_analysis.py`): S17 remains the ground
+truth, but the margin is now genuinely narrow — S17 at −0.490 against S20 (−0.466), S29 (−0.461), and
+S19 (−0.424), with **overlapping confidence intervals** against the closest competitors. This is the
+honest number: a modestly (15%) engineered bottleneck on an otherwise-balanced line produces a real but
+not overwhelming lead, not a 7× blowout. The blowout was the zone imbalance, not the engineered
+perturbation. The shifting-bottleneck trace's qualitative shape is unchanged (S17 dominant at low SUV
+share, ceding to a final-assembly station — now S19 earlier in the sweep, at 60% SUV rather than
+80–90%) — a genuine, gradual shift either way, just with an honestly narrower margin throughout.
+`ground_truth.csv` and `shifting_trace.csv` have been regenerated under the corrected scenario; this
+addendum records what changed and why, rather than silently overwriting the original numbers with no
+explanation.

@@ -199,3 +199,133 @@ isolate the true pre-Phase-5 state (44 tests) before writing the corrected figur
 Per instruction, the build stops here. **Phase 6 — Engine & Transport** is next when resumed: the
 real-time-paced asyncio tick loop, the single-slot SSE conflation bus, and the REST control surface —
 building on `diagnostic/bottleneck.py`'s `diagnose()` as the live twin's actual bottleneck feed.
+
+---
+
+## Addendum, found much later (post-Phase-10): the original "100%" only tested one scenario
+
+The 10-seed, 100%-top-1 result above is real, but a legitimate question exposed a real gap in it: all
+10 seeds shared the *same* ground-truth station (S17) — 10 replications of one engineered scenario,
+not 10 different ones. That validates noise-robustness on a single case, not generalization across
+different bottleneck identities or line positions.
+
+**Tested properly**: `tools/run_detector_benchmark_multiscenario.py` engineers a distinct bottleneck
+in each zone — S05 (body), S17 (paint, the original scenario), S25 (final) — with ground truth
+independently recomputed and verified via the full sensitivity analysis for each, rather than assumed.
+First pass, using the same 1.15x multiplier for every zone: **every detector collapsed to 0–30%
+accuracy at S25**, all of them consistently picking S13 (a paint-zone station) instead.
+
+**Root cause, found by checking rather than guessing:** S13 has an inherently long baseline cycle time
+(paint zone), so its active periods are the longest on the line in *absolute seconds* — regardless of
+whether it is anywhere near the actual throughput-limiting station. Confirmed independently: the
+sensitivity-based ground truth already correctly said S25 at every multiplier tested (1.15x through
+2.2x) — the aggregate throughput signal was never the problem. The live, per-tick detectors were
+comparing absolute durations across zones with very different baseline paces, which was.
+
+**Fixed** with a new detector, `score_active_period_normalized` (`detectors.py`): divides each
+station's mean active-period duration by its own zone-configured baseline cycle time before comparing
+— answering "how anomalous is this streak for *this* station," not "whose streak is longest in
+absolute seconds." Same normalization principle already used for `cycle_time_z` elsewhere in this
+project, now applied to bottleneck detection. Verified with a deterministic, hand-built unit test
+(`test_normalizing_by_baseline_cycle_time_fixes_a_naturally_slow_station_bias`).
+
+**Checked, not assumed, that ensembling would help**: it doesn't. A majority vote across all seven
+detectors scored *worse* overall (70.0%) than the best single detector, because the detectors' errors
+are correlated (they share the same S13 confound), not independent — the textbook condition where
+ensembling fails.
+
+**A second, more important finding the normalization alone didn't fully explain:** even normalized,
+S13 still won 7 of 10 seeds at S25's original 1.15x multiplier — only a modest improvement (20% → 30%).
+Testing S25 at a stronger, independently-verified-still-correct multiplier (2.2x) resolved it
+completely: **100% accuracy across every detector except the already-known-weak Queue Length.** The
+honest conclusion: a *modestly* dominant bottleneck (a 15% slowdown) is measurably harder for every
+one of these live, state-based detectors to find consistently than a clearly dominant one (2.2x) —
+even when the aggregate sensitivity-analysis ground truth already agrees on which station it is. This
+is a real, generalizable limitation of active-period-style detection under weak signal conditions, and
+is stated here rather than resolved away by only reporting the multiplier that made it easy.
+
+**Interim headline at that point** (S25 recalibrated to 2.2x to get a robust signal): Active Period
+(both variants), Busy Ratio, Turning Point, and Utilization all at 100%; Arrow 90%; Queue Length
+33.3%. Full data at that stage: `docs/phases/detector_comparison_multiscenario.csv` (superseded by the
+final version below).
+
+---
+
+## Second addendum, same investigation continued: recalibrating S25 to 2.2x was a workaround, not a fix
+
+Asked directly whether cranking S25's multiplier to 2.2x actually solved anything, or just made the
+test easier: it was the latter. The real question was why a *modest* (1.15x) bottleneck needed a
+stronger one to be detectable at all, and that question led to the actual root cause.
+
+**Decisive diagnostic**: S13's active periods, even normalized by baseline cycle time, were still
+winning 7 of 10 seeds. Checking WHY (not just accepting the ratio and moving on) found that S13 has
+only 2 active periods across an entire 20,000s run — one 19,377-second unbroken streak, ~97% of the
+whole run, with **zero blocked time**. That is not "long cycle time." That is a station that
+essentially never goes idle, in *any* scenario, including a completely unperturbed baseline with no
+engineered bottleneck at all (measured directly: 93.8%–97.1% active across three different scenarios
+and a no-perturbation control). **S13 was chronically saturated by the scenario's own zone
+configuration, independent of anything Phase 4 or 5 ever engineered.**
+
+Root cause: `scenarios/line30.yaml`'s three zones had different base cycle times (body 45.0s, paint
+65.0s, final 55.0s). Paint zone's per-station rate (65s) was slower than body zone's upstream feed
+rate (45s), so paint zone — and its entry station S13 most visibly — was the whole line's *structural*
+bottleneck by pure zone-to-zone pacing mismatch, layered underneath whatever station Phase 4/5 was
+deliberately trying to engineer as "the" bottleneck. Confirmed with the harshest possible test: body
+zone's tail stations showed real chronic BLOCKED time, final zone's stations showed real chronic
+STARVED time, and paint zone sat at ~94–97% utilization — the textbook signature of one zone
+permanently capping the whole line's throughput, present even with `bottleneck_multiplier=1.0`.
+
+**Fixed** (`scenarios/line30.yaml`): rebalanced all three zones to an equal `base_cycle_time_s: 50.0`,
+keeping each zone's own CV and buffer capacity as its distinguishing character rather than raw pace.
+
+**A second, smaller confound surfaced immediately after fixing the first**: S01 started winning most
+detector picks. Diagnosis: the arrival source (`line.py`'s `_source()`) was paced at *exactly* the
+first station's own mean cycle time — zero slack, arrival rate equal to service rate on average — so
+S01 was structurally immune to starvation (always fed) and, once zones no longer left it chronically
+blocked either, ended up looking maximally busy by a boundary-condition artifact, not genuine
+disruption. This was already partially documented as a Phase 5 finding ("split its pick between S01
+and S17 roughly 54%/45%") — it had never been fully resolved, only outweighed by the larger zone
+confound until that one was fixed.
+
+**Fixed** (`line.py`): added `ARRIVAL_SLACK_FACTOR = 1.08`, pacing the source slightly slower than the
+line's own processing capacity. Checked directly, not assumed, that *more* slack would help further —
+it does the opposite: at 1.15x arrival slack, S01's own throughput sensitivity already equals S17's;
+past that, the arrival process itself becomes the dominant bottleneck, worse than the original
+problem. 1.08x is the empirically-verified choice, not a round number.
+
+**Consequence, found and accepted rather than chased further**: rebalancing also narrowed S17's own
+sensitivity-analysis margin considerably (Phase 4's addendum) — the original "~7× lead" was itself
+partly riding paint zone's old, undocumented advantage. `tests/test_ground_truth.py`,
+`tests/test_detectors.py`, and `tests/test_line.py` all needed their hardcoded expectations updated to
+match — not because anything they tested became wrong, but because the underlying scenario dynamics
+they were pinned against genuinely, honestly changed. Each updated test's docstring records why.
+
+**Final, properly-validated headline** — one uniform 1.15x multiplier now works for all three zones
+(verified directly; no more per-zone tuning), across 3 distinct scenarios (30 scenario×seed trials,
+each scenario's ground truth independently verified):
+
+| Detector | Accuracy | Note |
+|---|---|---|
+| Busy Ratio | 93.3% | Best overall — full statistical structure, not just a point estimate |
+| Active Period (both variants) | 90.0% | |
+| Queue Length | 70.0% | Was 0% before any of this investigation — the "consistent weakness" was entirely the two confounds above |
+| Turning Point | 70.0% | |
+| Arrow | 66.7% | |
+| Utilization | 66.7% | |
+
+Single-scenario (S17 only, 10 seeds, matching the original benchmark exactly): Utilization 90%, Arrow
+100%, Turning Point 90%, Busy Ratio 80%, Active Period (both variants) 70%, Queue Length 70% — a
+different ranking than the multi-scenario average, because S25 (final zone, the highest-CV zone at
+0.28) turned out to be a genuinely harder case for the simpler point-statistic methods (Utilization,
+Arrow, Turning Point): its own ground-truth sensitivity sits in a tightly-clustered region with 5+
+other final-zone stations within a narrow band, verified directly (not another hidden confound — the
+wrong picks at S25 are spread across many different stations, not one consistent artifact station the
+way S13 and S01 were). The methods with more statistical structure (Busy Ratio, Active Period) stay at
+100% there regardless.
+
+**No number in this section is higher than the true underlying accuracy would support, and none is
+lower because a fixable confound was left in** — that is what "finished" means here, not a specific
+target number reached.
+
+Full data: `docs/phases/detector_comparison.csv` (single-scenario), `docs/phases/detector_comparison_
+multiscenario.csv` (three-scenario). 160/160 tests green.

@@ -215,3 +215,32 @@ uninstrumented stations; the exact partition-of-unity evidence attribution; defe
 transfer-delay realignment. Directly closes this phase's one carried-forward limitation: once Phase 9's
 inferred features exist, Model B's feature pipeline should be revisited to use them for dark stations
 rather than ground truth.
+
+---
+
+## Addendum, found much later (post-Phase-10): BIAS re-solved after a simulation-core fix
+
+Two real simulation-core confounds were found and fixed well after this phase closed (Phase 5's
+addendum): uneven zone-to-zone base cycle times, and an unpaced arrival source. Both changed the
+whole line's queue-pressure and blocked/starved feature distributions — the exact features
+`oracle_risk` weights — so `BIAS` (the one calibrated, not hand-chosen, constant in `labels.py`) was
+no longer solving for Bosch's ~0.58% target under the corrected dynamics. Re-ran
+`tools/calibrate_label_bias.py`'s fixed-point solve: **BIAS changed from −8.3743 to −7.7258**,
+converging in the same 3 iterations as before.
+
+Retrained Model B on freshly generated data under the corrected scenario. The metrics **improved**,
+not by design but as an honest side effect of a less pathologically-congested baseline line (cleaner
+signal, less noise from the old zone-saturation artifact):
+
+| Metric (config E, UNSEEN) | Before | After |
+|---|---|---|
+| PR-AUC | 0.0264 | 0.0554 |
+| PR-AUC vs. no-skill | 5.3× | 7.1× |
+| Lift over single-feature baseline | +44.7% | +54.3% |
+| Precision at threshold | 2.66% | 4.49% |
+| Recall at threshold | 41.1% | 40.6% |
+
+Recorded here rather than silently overwritten: the model itself is not "better" by any design
+change in this phase — the underlying simulation is simply more realistic than it was, and a less
+artificially-noisy line produces a cleaner risk signal. `tests/test_labels.py`'s pinned-constant
+regression test was updated to the new value, not deleted, so a future silent drift is still caught.

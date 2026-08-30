@@ -51,4 +51,4 @@ def test_weights_dict_and_bias_are_consistent_with_the_calibration_record() -> N
         "starved_fraction": 1.1,
         "upstream_risk_ewma": 1.8,
     }
-    assert BIAS == -8.3743
+    assert BIAS == -7.7258

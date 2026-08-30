@@ -28,10 +28,15 @@ WEIGHTS = {
 # solved from that same distribution) so that mean oracle_risk over a long
 # baseline run lands at Bosch's cited ~0.58% prevalence (docs/CITATIONS.md).
 # Recorded here as the converged result (3 iterations) of that calibration,
-# not re-derived on every import. Re-solved once already, after a rolling-
-# window sampling bug in features.py (fixed, see that module's docstring)
-# was found via this project's own tests and corrected.
-BIAS = -8.3743
+# not re-derived on every import. Re-solved twice already: once after a
+# rolling-window sampling bug in features.py (fixed, see that module's
+# docstring) was found via this project's own tests and corrected; and once
+# more after two real simulation-core confounds were found and fixed (uneven
+# zone-to-zone base cycle times; an unpaced arrival source -- see
+# docs/phases/phase-05-detector-benchmark.md's addendum), which shifted the
+# whole line's queue-pressure and blocked/starved feature distributions
+# enough to need a fresh fixed-point solve, not a reuse of the old constant.
+BIAS = -7.7258
 
 
 def oracle_risk(features: dict[str, float], *, bias: float = BIAS) -> float:

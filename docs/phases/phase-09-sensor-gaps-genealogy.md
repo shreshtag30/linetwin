@@ -47,22 +47,28 @@ Pre-checked before being promised anywhere, per this project's own standing rule
 | Coverage | Dark stations | Mean relative error |
 |---|---|---|
 | 100% | 0 | 0.000 |
-| 90% | 3 | 0.324 |
-| 80% | 6 | 0.277 |
-| 70% | 9 | 0.283 |
-| 60% | 12 | 0.289 |
-| 50% | 15 | 0.273 |
-| 40% | 18 | 0.262 |
+| 90% | 3 | 0.236 |
+| 80% | 6 | 0.234 |
+| 70% | 9 | 0.209 |
+| 60% | 12 | 0.218 |
+| 50% | 15 | 0.220 |
+| 40% | 18 | 0.210 |
 
-Error jumps sharply from 0 to ~30% the instant **any** station goes dark, then stays **roughly flat**
-from 90% down to 40% coverage — not the smooth, gradually-worsening slope "graceful degradation" would
-suggest. This is reported honestly rather than reframed to sound better, with the methodological caveat
-that matters: the "error" is measured against a single noisy instantaneous cycle-time sample (zone CVs
-up to 0.28), and the harmonic extension estimates a smoothed value, not that sample — so a meaningful
-share of the ~27–32% floor is likely inherent sampling noise the method was never going to match, not a
-sign the inference itself gets worse with more missing stations. The genuinely useful reading of this
-curve: inference accuracy does not meaningfully deteriorate as coverage keeps dropping to 40% — a
-robustness story, not a graceful-decay one.
+Error jumps sharply from 0 to ~21–24% the instant **any** station goes dark, then stays **roughly
+flat** from 90% down to 40% coverage — not the smooth, gradually-worsening slope "graceful
+degradation" would suggest. This is reported honestly rather than reframed to sound better, with the
+methodological caveat that matters: the "error" is measured against a single noisy instantaneous
+cycle-time sample, and the harmonic extension estimates a smoothed value, not that sample — so a
+meaningful share of the floor is likely inherent sampling noise the method was never going to match,
+not a sign the inference itself gets worse with more missing stations. The genuinely useful reading
+of this curve: inference accuracy does not meaningfully deteriorate as coverage keeps dropping to 40%
+— a robustness story, not a graceful-decay one.
+
+*(Re-run once, post-Phase-10, after two simulation-core confounds were found and fixed — uneven
+zone-to-zone base cycle times and an unpaced arrival source, both detailed in Phase 5's addendum. The
+plateau is now slightly lower (~21–24% vs. the original ~27–32%) and the shape is otherwise
+unchanged — consistent with a less pathologically-noisy baseline line producing a cleaner signal, not
+a change in what this curve is actually reporting.)*
 
 ---
 

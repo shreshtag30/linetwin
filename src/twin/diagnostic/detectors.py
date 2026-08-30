@@ -62,6 +62,38 @@ def score_active_period(stats: LineRunStats) -> DetectorResult:
     return DetectorResult("active_period", scores, max(scores, key=lambda s: scores[s]))
 
 
+def score_active_period_normalized(stats: LineRunStats) -> DetectorResult:
+    """Same signal as `score_active_period`, but each station's mean
+    active-period duration is divided by ITS OWN zone-configured baseline
+    cycle time before comparing across stations.
+
+    REAL BUG this fixes, found by testing detectors against MULTIPLE distinct
+    engineered bottleneck scenarios rather than replicating one: a station
+    with an inherently long baseline cycle time can have the longest
+    ABSOLUTE active periods on the entire line without being anywhere near
+    the actual throughput-limiting station. Concretely, S13 (paint zone, long
+    base cycle time) was the top pick of every raw-duration detector in a
+    scenario engineered to make S25 (final assembly) the true bottleneck --
+    confirmed via the sensitivity-analysis ground truth at every tested
+    multiplier from 1.15x to 2.2x -- because S13's active periods are long in
+    absolute seconds purely from its own slow baseline pace, not from being
+    unusually disrupted. Dividing by each station's own baseline answers "how
+    anomalous is this streak FOR THIS STATION," not "whose streak is longest
+    in absolute seconds" -- the same normalization already used for
+    `cycle_time_z` elsewhere in this project (risk/features.py,
+    diagnostic/genealogy.py's z-score), now applied to bottleneck detection
+    too, where it was missing.
+    """
+    scores: dict[str, float] = {}
+    for sid in stats.station_order:
+        periods = stats.stations[sid].active_periods
+        durations = [end - start for start, end in periods]
+        mean_duration = sum(durations) / len(durations) if durations else 0.0
+        base = stats.base_cycle_time_of.get(sid) or 1.0
+        scores[sid] = mean_duration / base
+    return DetectorResult("active_period_normalized", scores, max(scores, key=lambda s: scores[s]))
+
+
 def score_busy_ratio(stats: LineRunStats) -> DetectorResult:
     """BR ~ (this completion's cycle time) / (gap since this station's own
     previous completion). BR -> 1 means the station is almost never idle
@@ -150,6 +182,7 @@ def detect_turning_point(stats: LineRunStats) -> DetectorResult:
 ALL_DETECTORS = (
     score_utilization,
     score_active_period,
+    score_active_period_normalized,
     score_busy_ratio,
     score_queue_length,
     detect_arrow,
@@ -168,6 +201,7 @@ __all__ = [
     "detect_turning_point",
     "run_all_detectors",
     "score_active_period",
+    "score_active_period_normalized",
     "score_busy_ratio",
     "score_queue_length",
     "score_utilization",

@@ -1,25 +1,25 @@
 {
   "evaluated_on": "config E (UNSEEN)",
   "model": {
-    "pr_auc": 0.026399179397287875,
-    "no_skill_pr_auc": 0.005004021088374587,
-    "pr_auc_over_no_skill_x": 5.2755931541972965,
-    "roc_auc": 0.8271497530309834,
-    "mcc_at_threshold": 0.0884685894084957,
-    "threshold": 0.02,
-    "precision_at_threshold": 0.026558891454965358,
-    "recall_at_threshold": 0.4107142857142857,
-    "f1_at_threshold": 0.049891540130151846,
+    "pr_auc": 0.055359918952226105,
+    "no_skill_pr_auc": 0.007805724197745013,
+    "pr_auc_over_no_skill_x": 7.092220727990744,
+    "roc_auc": 0.8240513894200417,
+    "mcc_at_threshold": 0.11627851972356604,
+    "threshold": 0.03,
+    "precision_at_threshold": 0.04494813676527084,
+    "recall_at_threshold": 0.40625,
+    "f1_at_threshold": 0.08094085091663784,
     "confusion_matrix_at_threshold": {
-      "true_negative": 30876,
-      "false_positive": 2529,
-      "false_negative": 99,
-      "true_positive": 69
+      "true_negative": 34122,
+      "false_positive": 2486,
+      "false_negative": 171,
+      "true_positive": 117
     },
-    "flag_rate_at_threshold": 0.07738361183093558
+    "flag_rate_at_threshold": 0.07054965307892455
   },
   "single_feature_baseline_cycle_time_z": {
-    "pr_auc": 0.018239228703696795
+    "pr_auc": 0.035873529672939566
   },
-  "lift_over_baseline_pct": 44.73846359488431
+  "lift_over_baseline_pct": 54.319687683215854
 }

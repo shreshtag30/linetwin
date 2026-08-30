@@ -23,6 +23,23 @@
 # published ~0.58% defect prevalence (docs/CITATIONS.md), used in Phase 8 as a
 # calibration TARGET for the synthetic defect rate — never downloaded, never
 # trained on, and not a cycle-time parameter at all.
+#
+# CORRECTION, found much later (post-Phase-10): the three zones' base_cycle_time_s
+# were originally 45.0 (body) / 65.0 (paint) / 55.0 (final) -- different enough that
+# paint zone was a CHRONIC, undifferentiated bottleneck by pure zone-to-zone pacing,
+# completely independent of the "bottleneck" section below. Confirmed directly: even
+# with bottleneck_multiplier=1.0 (no engineered perturbation at all), S13 (paint's
+# entry station) sat at ~97% active with zero blocked time, body-zone tail stations
+# were chronically BLOCKED, and final-zone stations were chronically STARVED --
+# textbook signature of one zone permanently rate-limiting the whole line by
+# construction. This silently confounded every "engineered bottleneck" scenario
+# that wasn't S13 itself or immediately downstream of it (found while testing
+# detector generalization against MULTIPLE distinct engineered bottlenecks --
+# docs/phases/phase-05-detector-benchmark.md's addendum). Rebalanced to an equal
+# 50.0s base across all three zones so the ENGINEERED bottleneck (below) is the
+# only thing determining which station currently constrains the line -- each
+# zone's distinctive character is now carried entirely by its own CV and buffer
+# capacity, not by raw pace. Still `synthetic — uncalibrated` either way.
 
 name: line30
 description: >
@@ -33,19 +50,19 @@ seed: 20260826
 zones:
   body:
     station_range: [1, 12]
-    base_cycle_time_s: 45.0
+    base_cycle_time_s: 50.0
     cv: 0.12
     buffer_capacity: 6
     provenance: synthetic — uncalibrated
   paint:
     station_range: [13, 18]
-    base_cycle_time_s: 65.0
+    base_cycle_time_s: 50.0
     cv: 0.22
     buffer_capacity: 4
     provenance: synthetic — uncalibrated
   final:
     station_range: [19, 30]
-    base_cycle_time_s: 55.0
+    base_cycle_time_s: 50.0
     cv: 0.28
     buffer_capacity: 5
     provenance: synthetic — uncalibrated
