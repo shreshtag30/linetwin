@@ -11,7 +11,7 @@
     (function () {
       try {
         var saved = localStorage.getItem("linetwin-theme");
-        if (saved === "light" || saved === "dark") {
+        if (saved === "light" || saved === "dark" || saved === "cyberpunk") {
           document.documentElement.setAttribute("data-theme", saved);
         }
       } catch (e) { /* localStorage unavailable -- fall back to OS theme */ }
@@ -23,7 +23,7 @@
        this a browser's ordinary HTTP cache can keep serving a stale script
        after a deploy indefinitely -- confirmed during this redesign: a plain
        reload kept re-running old cached JS with no console error at all. -->
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 
@@ -42,7 +42,11 @@
         <span class="vital" title="Real-time factor: how fast the simulation clock runs versus an actual clock. 1.0 = keeping pace with real time exactly.">rtf <b id="v-rtf">–</b></span>
         <span class="vital" title="How far behind schedule the server's tick loop currently is, in milliseconds. Should stay near 0.">lag <b id="v-lag">–</b> ms</span>
       </span>
-      <button id="btn-theme" class="btn-icon" title="Switch between light and dark mode" aria-label="Toggle theme">🌙</button>
+      <div class="theme-switch" role="group" aria-label="Theme">
+        <button class="theme-opt" data-theme-choice="light" title="Light (Accenture)" aria-label="Light theme">☀</button>
+        <button class="theme-opt" data-theme-choice="dark" title="Dark (Accenture)" aria-label="Dark theme">☾</button>
+        <button class="theme-opt" data-theme-choice="cyberpunk" title="Cyberpunk console (reversible — switch back anytime)" aria-label="Cyberpunk theme">◈</button>
+      </div>
       <button id="btn-kill" class="btn btn-ghost" title="Close the live connection on purpose, to demonstrate the dashboard freezing without the server.">Kill stream</button>
       <button id="btn-resume" class="btn btn-ghost" disabled title="Reconnect after Kill stream.">Resume</button>
       <button id="btn-restart" class="btn btn-ghost" title="Restart the simulation from tick zero with a fresh run.">Restart</button>
@@ -362,6 +366,6 @@
   </footer>
 
   <script src="vendor/uplot/uPlot.iife.min.js"></script>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
