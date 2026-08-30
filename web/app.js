@@ -68,11 +68,35 @@ function applyThemeIcon() {
   $("btn-theme").textContent = effectiveTheme() === "dark" ? "☀️" : "🌙";
 }
 
+// uPlot draws axis ticks, grid lines, and legend markers on <canvas> --
+// CSS cannot touch canvas pixel content at all, which is exactly the bug a
+// user caught: styles.css's dark-mode tokens never reached the chart axes,
+// because they were never passed to uPlot as options in the first place
+// (no `axes:` config existed here before -- uPlot silently fell back to its
+// own hardcoded, light-mode-oriented default axis color). Read the *actual*
+// CSS custom properties at chart-creation time instead of hardcoding a
+// second copy of the palette here, so this can never drift out of sync with
+// styles.css again.
+function uplotThemeColors() {
+  const cs = getComputedStyle(document.documentElement);
+  return {
+    ink: cs.getPropertyValue("--ink-soft").trim() || "#595959",
+    grid: cs.getPropertyValue("--line").trim() || "#DCDCDC",
+  };
+}
+
+function themedAxes() {
+  const { ink, grid } = uplotThemeColors();
+  const axisCommon = { stroke: ink, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 } };
+  return [axisCommon, axisCommon];
+}
+
 function toggleTheme() {
   const next = effectiveTheme() === "dark" ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", next);
   try { localStorage.setItem("linetwin-theme", next); } catch (e) { /* ignore */ }
   applyThemeIcon();
+  rebuildChartsForThemeChange();
 }
 
 $("btn-theme").addEventListener("click", toggleTheme);
@@ -286,7 +310,13 @@ function drawCharts() {
 
   if (!throughputChart) {
     throughputChart = new uPlot(
-      { width: 380, height: 160, series: [{}, { stroke: "#A100FF", width: 2 }], scales: { x: { time: false } } },
+      {
+        width: 380,
+        height: 160,
+        series: [{}, { stroke: "#A100FF", width: 2 }],
+        scales: { x: { time: false } },
+        axes: themedAxes(),
+      },
       throughputData,
       $("chart-throughput")
     );
@@ -296,7 +326,13 @@ function drawCharts() {
 
   if (!wipChart) {
     wipChart = new uPlot(
-      { width: 380, height: 160, series: [{}, { stroke: "#E8590C", width: 2 }], scales: { x: { time: false } } },
+      {
+        width: 380,
+        height: 160,
+        series: [{}, { stroke: "#E8590C", width: 2 }],
+        scales: { x: { time: false } },
+        axes: themedAxes(),
+      },
       wipData,
       $("chart-wip")
     );
@@ -486,7 +522,13 @@ function drawPmCharts() {
 
   if (!pmThroughputChart) {
     pmThroughputChart = new uPlot(
-      { width: 380, height: 160, series: [{}, { stroke: "#A100FF", width: 2 }], scales: { x: { time: false } } },
+      {
+        width: 380,
+        height: 160,
+        series: [{}, { stroke: "#A100FF", width: 2 }],
+        scales: { x: { time: false } },
+        axes: themedAxes(),
+      },
       throughputData,
       $("pm-chart-throughput")
     );
@@ -496,13 +538,39 @@ function drawPmCharts() {
 
   if (!pmWipChart) {
     pmWipChart = new uPlot(
-      { width: 380, height: 160, series: [{}, { stroke: "#E8590C", width: 2 }], scales: { x: { time: false } } },
+      {
+        width: 380,
+        height: 160,
+        series: [{}, { stroke: "#E8590C", width: 2 }],
+        scales: { x: { time: false } },
+        axes: themedAxes(),
+      },
       wipData,
       $("pm-chart-wip")
     );
   } else {
     pmWipChart.setData(wipData);
   }
+}
+
+// Axis colors are read once at chart-construction time (uPlot has no live
+// "update this option" path for axes), so a theme switch has to tear down
+// and rebuild any chart that already exists -- cheap, since the underlying
+// history arrays are untouched and just get re-plotted with the new colors.
+function rebuildChartsForThemeChange() {
+  for (const [chart, setter] of [
+    [throughputChart, (c) => { throughputChart = c; }],
+    [wipChart, (c) => { wipChart = c; }],
+    [pmThroughputChart, (c) => { pmThroughputChart = c; }],
+    [pmWipChart, (c) => { pmWipChart = c; }],
+  ]) {
+    if (chart) {
+      chart.destroy();
+      setter(null);
+    }
+  }
+  if (history.ticks.length) drawCharts();
+  if (pmHistory.ticks.length) drawPmCharts();
 }
 
 /* ---------------------------------------------------------------------
