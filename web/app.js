@@ -51,38 +51,21 @@ let pendingNarration = null; // {stationId, multiplier, appliedAtTick, beforeBot
 function $(id) { return document.getElementById(id); }
 
 /* ---------------------------------------------------------------------
- * Theme switch. index.html's inline head script already applies any
- * stored preference before first paint (no flash). Three explicit,
- * named choices rather than a blind cycle -- "make it possible to
- * switch back to the original" is easiest to guarantee when every
- * theme is one labelled click away at all times, not N clicks around a
- * cycle the user has to count. "cyberpunk" is opt-in only: it is never
- * reached via the OS prefers-color-scheme fallback, only by an explicit
- * click, and is otherwise a normal third value of the same data-theme
- * attribute the two Accenture themes already used.
+ * Theme toggle. index.html's inline head script already applies any
+ * stored preference before first paint (no flash); this just wires the
+ * button and keeps its icon in sync with the effective theme, including
+ * the very first click when no preference has been stored yet.
  * ------------------------------------------------------------------- */
-
-const THEME_CHOICES = ["light", "dark", "cyberpunk"];
 
 function effectiveTheme() {
   const explicit = document.documentElement.getAttribute("data-theme");
-  if (THEME_CHOICES.includes(explicit)) return explicit;
+  if (explicit === "light" || explicit === "dark") return explicit;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function applyThemeSwitchUI() {
-  const current = effectiveTheme();
-  for (const btn of document.querySelectorAll(".theme-opt")) {
-    btn.classList.toggle("is-active", btn.dataset.themeChoice === current);
-  }
-}
-
-function setTheme(name) {
-  if (!THEME_CHOICES.includes(name)) return;
-  document.documentElement.setAttribute("data-theme", name);
-  try { localStorage.setItem("linetwin-theme", name); } catch (e) { /* ignore */ }
-  applyThemeSwitchUI();
-  rebuildChartsForThemeChange();
+function applyThemeIcon() {
+  // Show the icon for the theme a click would SWITCH TO, not the current one.
+  $("btn-theme").textContent = effectiveTheme() === "dark" ? "☀️" : "🌙";
 }
 
 // uPlot draws axis ticks, grid lines, and legend markers on <canvas> --
@@ -99,11 +82,6 @@ function uplotThemeColors() {
   return {
     ink: cs.getPropertyValue("--ink-soft").trim() || "#595959",
     grid: cs.getPropertyValue("--line").trim() || "#DCDCDC",
-    // Series strokes read live too, not just axes -- otherwise switching to
-    // cyberpunk would leave both trend lines stuck on Accenture purple/orange
-    // while everything else in the chart (and the rest of the page) changed.
-    seriesA: cs.getPropertyValue("--purple").trim() || "#A100FF",
-    seriesB: cs.getPropertyValue("--orange").trim() || "#E8590C",
   };
 }
 
@@ -113,10 +91,16 @@ function themedAxes() {
   return [axisCommon, axisCommon];
 }
 
-for (const btn of document.querySelectorAll(".theme-opt")) {
-  btn.addEventListener("click", () => setTheme(btn.dataset.themeChoice));
+function toggleTheme() {
+  const next = effectiveTheme() === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("linetwin-theme", next); } catch (e) { /* ignore */ }
+  applyThemeIcon();
+  rebuildChartsForThemeChange();
 }
-applyThemeSwitchUI();
+
+$("btn-theme").addEventListener("click", toggleTheme);
+applyThemeIcon();
 
 function setLamp(state) {
   $("lamp").dataset.state = state;
@@ -329,7 +313,7 @@ function drawCharts() {
       {
         width: 380,
         height: 160,
-        series: [{}, { stroke: uplotThemeColors().seriesA, width: 2 }],
+        series: [{}, { stroke: "#A100FF", width: 2 }],
         scales: { x: { time: false } },
         axes: themedAxes(),
       },
@@ -345,7 +329,7 @@ function drawCharts() {
       {
         width: 380,
         height: 160,
-        series: [{}, { stroke: uplotThemeColors().seriesB, width: 2 }],
+        series: [{}, { stroke: "#E8590C", width: 2 }],
         scales: { x: { time: false } },
         axes: themedAxes(),
       },
@@ -541,7 +525,7 @@ function drawPmCharts() {
       {
         width: 380,
         height: 160,
-        series: [{}, { stroke: uplotThemeColors().seriesA, width: 2 }],
+        series: [{}, { stroke: "#A100FF", width: 2 }],
         scales: { x: { time: false } },
         axes: themedAxes(),
       },
@@ -557,7 +541,7 @@ function drawPmCharts() {
       {
         width: 380,
         height: 160,
-        series: [{}, { stroke: uplotThemeColors().seriesB, width: 2 }],
+        series: [{}, { stroke: "#E8590C", width: 2 }],
         scales: { x: { time: false } },
         axes: themedAxes(),
       },
