@@ -26,6 +26,10 @@
   --line:        #DCDCDC;
   --line-strong: #C4C4C4;
   --shadow:      0 1px 2px rgba(26,20,32,.04), 0 6px 20px -10px rgba(26,20,32,.14);
+  --shadow-lg:   0 1px 2px rgba(26,20,32,.05), 0 22px 48px -20px rgba(26,20,32,.30);
+  --glow:        0 0 0 3px rgba(161,0,255,.10);
+  --wash:        radial-gradient(circle at 18% -8%, rgba(161,0,255,.055) 0%, transparent 55%),
+                  radial-gradient(circle at 100% 18%, rgba(232,89,12,.035) 0%, transparent 45%);
 
   --font-display: Archivo, "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
   --font-body:    "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, Helvetica, sans-serif;
@@ -53,6 +57,10 @@
     --line:        #33303B;
     --line-strong: #454050;
     --shadow:      0 1px 2px rgba(0,0,0,.35), 0 6px 20px -10px rgba(0,0,0,.6);
+    --shadow-lg:   0 1px 2px rgba(0,0,0,.4), 0 24px 52px -20px rgba(0,0,0,.75);
+    --glow:        0 0 0 3px rgba(195,120,255,.16);
+    --wash:        radial-gradient(circle at 18% -8%, rgba(195,120,255,.10) 0%, transparent 55%),
+                    radial-gradient(circle at 100% 18%, rgba(240,144,75,.06) 0%, transparent 45%);
   }
 }
 
@@ -76,6 +84,10 @@
   --line:        #33303B;
   --line-strong: #454050;
   --shadow:      0 1px 2px rgba(0,0,0,.35), 0 6px 20px -10px rgba(0,0,0,.6);
+  --shadow-lg:   0 1px 2px rgba(0,0,0,.4), 0 24px 52px -20px rgba(0,0,0,.75);
+  --glow:        0 0 0 3px rgba(195,120,255,.16);
+  --wash:        radial-gradient(circle at 18% -8%, rgba(195,120,255,.10) 0%, transparent 55%),
+                  radial-gradient(circle at 100% 18%, rgba(240,144,75,.06) 0%, transparent 45%);
 }
 
 * { box-sizing: border-box; }
@@ -86,7 +98,8 @@ html[data-theme="dark"]  { color-scheme: dark; }
 
 body {
   margin: 0;
-  background: var(--gray-bg);
+  background: var(--wash), var(--gray-bg);
+  background-attachment: fixed;
   color: var(--ink);
   font-family: var(--font-body);
   font-size: 14px;
@@ -121,22 +134,28 @@ code {
 /* ---------- topbar ---------- */
 
 .topbar {
-  background: var(--purple);
+  background: linear-gradient(165deg, var(--purple) 0%, var(--purple-dark) 130%);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 22px;
+  padding: 13px 22px;
   flex-wrap: wrap;
   gap: 10px;
   position: sticky;
   top: 0;
   z-index: 20;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lg);
 }
 
 .brand { display: flex; align-items: baseline; gap: 10px; }
-.brand-mark { font-family: var(--font-display); font-weight: 800; font-size: 19px; letter-spacing: -.01em; }
+.brand-mark {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -.02em;
+  text-shadow: 0 1px 12px rgba(0,0,0,.18);
+}
 .brand-sub { font-size: 12px; opacity: .82; }
 
 .vitals {
@@ -156,6 +175,8 @@ code {
   padding: 5px 14px;
   font-variant-numeric: tabular-nums;
   margin-right: 6px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 .vital { font-size: 11.5px; opacity: .95; white-space: nowrap; }
 .vital b { font-weight: 700; }
@@ -166,9 +187,24 @@ code {
   display: inline-block;
   box-shadow: 0 0 0 3px rgba(255,255,255,.25);
 }
-.lamp[data-state="open"]       { background: #4CD37A; }
+.lamp[data-state="open"] {
+  background: #4CD37A;
+  animation: lampPulse 2s ease-out infinite;
+}
 .lamp[data-state="connecting"] { background: #FFB258; }
 .lamp[data-state="closed"]     { background: #FF6B7D; }
+
+/* A real, honest tell: this only animates while data-state="open" is
+   actually true (app.js sets it from EventSource.readyState) -- it never
+   pulses to fake liveness the stream doesn't have. */
+@keyframes lampPulse {
+  0%   { box-shadow: 0 0 0 3px rgba(255,255,255,.25), 0 0 0 0 rgba(76,211,122,.55); }
+  70%  { box-shadow: 0 0 0 3px rgba(255,255,255,.25), 0 0 0 7px rgba(76,211,122,0); }
+  100% { box-shadow: 0 0 0 3px rgba(255,255,255,.25), 0 0 0 0 rgba(76,211,122,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lamp[data-state="open"] { animation: none; }
+}
 
 .btn {
   font-family: var(--font-body);
@@ -178,17 +214,18 @@ code {
   padding: 6px 12px;
   cursor: pointer;
   border: none;
-  transition: background .12s ease;
+  transition: background .16s cubic-bezier(.4,0,.2,1), transform .16s cubic-bezier(.4,0,.2,1);
 }
 .btn-ghost {
   background: rgba(255,255,255,.14);
   color: #fff;
   border: 1px solid rgba(255,255,255,.4);
 }
-.btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,.26); }
+.btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,.26); transform: translateY(-1px); }
+.btn-ghost:active:not(:disabled) { transform: translateY(0); }
 .btn-ghost:disabled { opacity: .38; cursor: not-allowed; }
 .btn-primary { background: #fff; color: var(--purple-dark); }
-.btn-primary:hover { background: #F1E4FF; }
+.btn-primary:hover { background: #F1E4FF; transform: translateY(-1px); }
 
 .btn-icon {
   width: 30px; height: 30px;
@@ -227,7 +264,8 @@ code {
   background: transparent;
   color: var(--ink-soft);
   cursor: pointer;
-  transition: color .12s ease, background .12s ease;
+  transition: color .16s cubic-bezier(.4,0,.2,1), background .16s cubic-bezier(.4,0,.2,1),
+              box-shadow .16s cubic-bezier(.4,0,.2,1);
 }
 .persona-tab.is-active {
   color: var(--purple);
@@ -378,13 +416,22 @@ code {
   border-radius: 10px;
   padding: 16px 18px;
   box-shadow: var(--shadow);
+  transition: box-shadow .18s cubic-bezier(.4,0,.2,1);
 }
+.panel:hover { box-shadow: var(--shadow-lg); }
 
 .stations-panel, .charts-panel { grid-column: 1 / -1; }
 
 /* ---------- bottleneck ---------- */
 
-.bn-station { font-family: var(--font-display); font-size: 32px; font-weight: 800; color: var(--purple); letter-spacing: -.01em; }
+.bn-station {
+  font-family: var(--font-display);
+  font-size: clamp(30px, 3.4vw, 40px);
+  font-weight: 800;
+  color: var(--purple);
+  letter-spacing: -.02em;
+  text-shadow: 0 2px 28px var(--purple-line);
+}
 .bn-meta { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; }
 .bn-runnerup { font-size: 12px; color: var(--ink-soft); }
 
@@ -537,8 +584,9 @@ input[type=range] { accent-color: var(--purple); }
   font-size: 11px;
   background: var(--surface-alt);
   position: relative;
-  transition: transform .1s ease;
+  transition: transform .14s cubic-bezier(.4,0,.2,1), box-shadow .14s cubic-bezier(.4,0,.2,1);
 }
+.station-card:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
 
 .station-card[data-state="working"] { border-left: 4px solid var(--green); }
 .station-card[data-state="starved"] { border-left: 4px solid var(--ink-faint); }
@@ -617,7 +665,13 @@ input[type=range] { accent-color: var(--purple); }
 }
 .roi-cell .k { font-size: 10.5px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; }
 .roi-cell .k .src { text-transform: none; font-style: italic; }
-.roi-cell .v { font-family: var(--font-display); font-size: 21px; font-weight: 800; color: var(--purple); }
+.roi-cell .v {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--purple);
+  text-shadow: 0 2px 20px var(--purple-line);
+}
 
 /* ---------- kill-stream frozen state ---------- */
 
