@@ -78,6 +78,63 @@ def _confidence_from_z(z: float) -> float:
     return 1.0 / (1.0 + math.exp(-z / Z_SCORE_CONFIDENCE_SCALE))
 
 
+@dataclass(frozen=True)
+class DefectCandidate:
+    """A unit worth tracing -- its own path's single most anomalous cycle
+    time, not yet run through `trace_genealogy` (that requires picking one).
+    """
+
+    unit_id: int
+    peak_z_score: float
+    peak_station_id: str
+
+
+def list_defect_candidates(
+    events: list[UnitEvent], *, limit: int = 10, recent_events: int = 3000
+) -> list[DefectCandidate]:
+    """Ranks recently-completed units by their own path's highest z-score, so
+    a caller (the API, a UI) can offer "which unit should I trace" without
+    the operator needing to already know a unit_id. `recent_events` caps the
+    population scan to the tail of a long-running session's event log rather
+    than rescanning an unbounded list on every request; it does not change
+    which stations' historical stats are used (still the full log, via
+    `_station_cycle_time_stats`), only which units are considered as
+    candidates.
+
+    Known limitation, measured not assumed (tests/test_genealogy.py): a
+    station with a small number of EXTREME outliers has its own reference
+    std inflated by those same outliers, which self-limits their z-score --
+    a severely-but-rarely perturbed station can rank below a station with
+    smaller, more numerous natural deviations. Every candidate is still
+    correctly traced back to its true origin when picked; this only affects
+    ranking order, not the correctness of an individual trace.
+    """
+    if not events:
+        return []
+
+    stats = _station_cycle_time_stats(events)
+    window = events[-recent_events:] if len(events) > recent_events else events
+
+    by_unit: dict[int, list[UnitEvent]] = {}
+    for e in window:
+        by_unit.setdefault(e.unit_id, []).append(e)
+
+    candidates = []
+    for unit_id, unit_events in by_unit.items():
+        best_e, best_z = None, float("-inf")
+        for e in unit_events:
+            mean, std = stats[e.station_id]
+            z = (e.cycle_time_s - mean) / std
+            if z > best_z:
+                best_e, best_z = e, z
+        candidates.append(
+            DefectCandidate(unit_id=unit_id, peak_z_score=best_z, peak_station_id=best_e.station_id)
+        )
+
+    candidates.sort(key=lambda c: -c.peak_z_score)
+    return candidates[:limit]
+
+
 def trace_genealogy(events: list[UnitEvent], defect_unit_id: int) -> GenealogyResult:
     unit_events = sorted(
         (e for e in events if e.unit_id == defect_unit_id), key=lambda e: e.entered_at
@@ -140,4 +197,10 @@ def trace_genealogy(events: list[UnitEvent], defect_unit_id: int) -> GenealogyRe
     )
 
 
-__all__ = ["AFFECTED_UNIT_RADIUS", "GenealogyResult", "trace_genealogy"]
+__all__ = [
+    "AFFECTED_UNIT_RADIUS",
+    "DefectCandidate",
+    "GenealogyResult",
+    "list_defect_candidates",
+    "trace_genealogy",
+]

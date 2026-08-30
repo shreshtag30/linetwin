@@ -217,6 +217,78 @@ async def test_state_is_503_before_any_tick_has_run() -> None:
 
 
 @pytest.mark.asyncio
+async def test_genealogy_candidates_returns_ranked_units(client: httpx.AsyncClient) -> None:
+    r = await client.get("/api/twin/genealogy/candidates", params={"limit": 5})
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["candidates"]) <= 5
+    scores = [c["peak_z_score"] for c in body["candidates"]]
+    assert scores == sorted(scores, reverse=True)
+    for c in body["candidates"]:
+        assert set(c.keys()) == {"unit_id", "peak_z_score", "peak_station_id"}
+
+
+@pytest.mark.asyncio
+async def test_genealogy_trace_of_a_real_candidate_names_a_real_origin(
+    client: httpx.AsyncClient,
+) -> None:
+    # The shared `client` fixture only runs the engine 0.3s -- long enough for
+    # /api/twin/state's own tests, but not long enough for any unit to have
+    # completed a full 30-station path yet (measured: zero candidates at
+    # 0.3s). Waited out explicitly here rather than lengthening the shared
+    # fixture's sleep for every other test in this file.
+    deadline = asyncio.get_event_loop().time() + 5.0
+    candidates_resp = await client.get("/api/twin/genealogy/candidates", params={"limit": 1})
+    while not candidates_resp.json()["candidates"] and asyncio.get_event_loop().time() < deadline:
+        await asyncio.sleep(0.2)
+        candidates_resp = await client.get("/api/twin/genealogy/candidates", params={"limit": 1})
+
+    assert candidates_resp.json()["candidates"], "no unit completed a full path within 5s"
+    unit_id = candidates_resp.json()["candidates"][0]["unit_id"]
+
+    r = await client.get(f"/api/twin/genealogy/{unit_id}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["defect_unit_id"] == unit_id
+    assert body["origin_station_id"].startswith("S")
+    assert 0.0 < body["confidence"] < 1.0
+    assert len(body["path"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_genealogy_trace_of_an_unknown_unit_is_404(client: httpx.AsyncClient) -> None:
+    r = await client.get("/api/twin/genealogy/999999")
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_control_center_static_files_are_served_without_shadowing_the_api(
+    client: httpx.AsyncClient,
+) -> None:
+    """The Control Center is a parallel prototype (docs/CONTROL_CENTER.md), at
+    a separate mount that must not shadow the primary dashboard's "/" mount
+    or any API route -- same ordering rule as the primary static mount,
+    proven here the same way that one already is below.
+    """
+    index = await client.get("/control-center/")
+    assert index.status_code == 200
+    assert "DigitalTwin.ai" in index.text
+
+    app_js = await client.get("/control-center/app.js")
+    assert app_js.status_code == 200
+    assert "EventSource" in app_js.text
+
+    # The primary dashboard must still be reachable at "/" -- this is a
+    # parallel prototype, not a replacement (explicit instruction).
+    primary = await client.get("/")
+    assert primary.status_code == 200
+    assert "LineTwin" in primary.text
+
+    healthz = await client.get("/healthz")
+    assert healthz.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_frontend_static_files_are_served_without_shadowing_the_api(
     client: httpx.AsyncClient,
 ) -> None:

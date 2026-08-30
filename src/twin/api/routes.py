@@ -15,12 +15,18 @@ from fastapi.sse import EventSourceResponse
 from fastapi.staticfiles import StaticFiles
 
 from twin.contracts import ControlAck, ControlCommand
+from twin.diagnostic.genealogy import list_defect_candidates, trace_genealogy
 from twin.economics import QC_LAG_UNITS, REWORK_COST_DELTA_USD
 from twin.sim.engine import Engine
 
 from .sse import make_stream_route
 
 WEB_DIR = Path(__file__).resolve().parents[3] / "web"
+# The Control Center (docs/CONTROL_CENTER.md) is a separate, parallel
+# prototype -- built alongside the primary dashboard rather than replacing
+# it, per explicit instruction. It reads the exact same live engine through
+# these same routes; nothing about the backend is duplicated for it.
+CONTROL_CENTER_DIR = Path(__file__).resolve().parents[3] / "web-control-center"
 
 
 def make_control_routes(engine: Engine) -> APIRouter:
@@ -120,6 +126,41 @@ def make_control_routes(engine: Engine) -> APIRouter:
         scorer = engine._risk_scorer
         return {"threshold": scorer.threshold if scorer is not None else None}
 
+    @router.get("/api/twin/genealogy/candidates")
+    async def genealogy_candidates(limit: int = Query(default=10, ge=1, le=50)) -> dict:
+        # diagnostic/genealogy.py is built and tested (Phase 9) but was never
+        # wired into any live view -- the Control Center's Root Cause screen
+        # is its first real API surface. Ranks recently-completed units by
+        # their own path's single most anomalous cycle time, so a caller
+        # doesn't need to already know a unit_id to find one worth tracing.
+        candidates = list_defect_candidates(engine.line.events, limit=limit)
+        return {
+            "candidates": [
+                {
+                    "unit_id": c.unit_id,
+                    "peak_z_score": round(c.peak_z_score, 3),
+                    "peak_station_id": c.peak_station_id,
+                }
+                for c in candidates
+            ]
+        }
+
+    @router.get("/api/twin/genealogy/{unit_id}")
+    async def genealogy_trace(unit_id: int) -> dict:
+        try:
+            result = trace_genealogy(engine.line.events, unit_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {
+            "defect_unit_id": result.defect_unit_id,
+            "origin_station_id": result.origin_station_id,
+            "origin_z_score": round(result.origin_z_score, 3),
+            "confidence": round(result.confidence, 3),
+            "path": result.path,
+            "affected_unit_ids": result.affected_unit_ids,
+            "origin_realigned_time_s": round(result.origin_realigned_time_s, 2),
+        }
+
     return router
 
 
@@ -145,6 +186,19 @@ def create_app(scenario_path: Path | str, *, seed: int | None = None) -> FastAPI
         methods=["GET"],
         response_class=EventSourceResponse,
     )
+
+    # Mounted before the "/" catch-all below, for the same reason API routes
+    # are registered before it: Starlette matches mounts in registration
+    # order by prefix, so "/" registered first would shadow "/control-center"
+    # entirely (every path starts with "/"). This mount has nothing to do
+    # with the API-vs-static ordering rule below -- it is its OWN instance of
+    # the identical rule, one level up.
+    if CONTROL_CENTER_DIR.is_dir():
+        app.mount(
+            "/control-center",
+            StaticFiles(directory=CONTROL_CENTER_DIR, html=True),
+            name="control-center",
+        )
 
     # Mounted LAST, deliberately: a Mount is matched like any other route in
     # registration order, so mounting the static frontend before the API
