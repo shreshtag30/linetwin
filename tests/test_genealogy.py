@@ -129,8 +129,8 @@ def test_last_station_transfer_delay_is_zero_others_are_not() -> None:
 
 
 # ---------------------------------------------------------------------------
-# list_defect_candidates -- the Control Center's Root Cause screen's entry
-# point (docs/CONTROL_CENTER.md): finds a unit worth tracing without the
+# list_defect_candidates -- the Plant Manager view's genealogy entry
+# point: finds a unit worth tracing without the
 # caller already knowing a unit_id.
 # ---------------------------------------------------------------------------
 

@@ -1,3 +1,13 @@
+> **RETIRED — no longer served.** The submission ships exactly one dashboard, at `/`
+> (`web/`). The `/control-center` mount was removed from `src/twin/api/routes.py`, because
+> shipping two competing visual languages made the prototype read as two unfinished
+> prototypes rather than one finished one. The genealogy API surface this screen introduced
+> (`/api/twin/genealogy/candidates` and `/api/twin/genealogy/{unit_id}`) was kept and is now
+> wired into the Plant Manager view. The `web-control-center/` directory is retained on disk
+> but is not part of the running application.
+>
+> The rest of this document is preserved as the design record of that prototype.
+
 # DigitalTwin.ai Control Center — a parallel prototype
 
 `web-control-center/`, served at `/control-center/`. Built alongside the primary dashboard

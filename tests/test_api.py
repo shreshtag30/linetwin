@@ -262,33 +262,6 @@ async def test_genealogy_trace_of_an_unknown_unit_is_404(client: httpx.AsyncClie
 
 
 @pytest.mark.asyncio
-async def test_control_center_static_files_are_served_without_shadowing_the_api(
-    client: httpx.AsyncClient,
-) -> None:
-    """The Control Center is a parallel prototype (docs/CONTROL_CENTER.md), at
-    a separate mount that must not shadow the primary dashboard's "/" mount
-    or any API route -- same ordering rule as the primary static mount,
-    proven here the same way that one already is below.
-    """
-    index = await client.get("/control-center/")
-    assert index.status_code == 200
-    assert "DigitalTwin.ai" in index.text
-
-    app_js = await client.get("/control-center/app.js")
-    assert app_js.status_code == 200
-    assert "EventSource" in app_js.text
-
-    # The primary dashboard must still be reachable at "/" -- this is a
-    # parallel prototype, not a replacement (explicit instruction).
-    primary = await client.get("/")
-    assert primary.status_code == 200
-    assert "LineTwin" in primary.text
-
-    healthz = await client.get("/healthz")
-    assert healthz.status_code == 200
-
-
-@pytest.mark.asyncio
 async def test_frontend_static_files_are_served_without_shadowing_the_api(
     client: httpx.AsyncClient,
 ) -> None:

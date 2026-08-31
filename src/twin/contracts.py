@@ -31,7 +31,16 @@ from pydantic import BaseModel, ConfigDict, Field
 # Schema + tick geometry
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = "0.1.0"
+# 0.2.0 adds StationSnapshot.active_period_elapsed_s. Additive and optional,
+# but a schema change all the same, so it is bumped rather than smuggled in.
+# Rationale: the live detector (diagnostic/bottleneck.py) ranks stations by
+# how long their CURRENT active period has been running, and that quantity
+# was not on the wire at all -- so no consumer could show WHY a station was
+# named the constraint. `time_in_state` is a cumulative share since run
+# start and is a genuinely different quantity: early in a run an upstream
+# station outranks the constraint on it, which would make an explanation
+# built on it contradict the verdict it claims to explain.
+SCHEMA_VERSION = "0.2.0"
 
 # SIM_DT / REAL_DT == 60 always, so "1 sim-minute ~ 1 real second" holds at every
 # rate. Local: 7.5 / 0.125 -> 8 ticks/s. Hosted: 30 / 0.5 -> 2 ticks/s (what a
@@ -217,6 +226,14 @@ class StationSnapshot(BaseModel):
 
     # Fraction of time in each state since run start; APM reads this.
     time_in_state: dict[StationState, float] = Field(default_factory=dict)
+
+    # Seconds this station's CURRENT active period has been running, or None
+    # when it is not currently active. This is the exact quantity the
+    # momentary Active Period rule ranks on -- the station whose active
+    # period started earliest wins -- so it is what a UI must show to
+    # explain a verdict rather than merely assert one. Optional because a
+    # replayed fixture or a real OT tap may not carry it.
+    active_period_elapsed_s: float | None = Field(default=None, ge=0.0)
 
 
 class RiskDriver(BaseModel):

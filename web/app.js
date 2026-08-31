@@ -67,7 +67,11 @@ function effectiveTheme() {
 
 function applyThemeIcon() {
   // Show the icon for the theme a click would SWITCH TO, not the current one.
-  $("btn-theme").textContent = effectiveTheme() === "dark" ? "☀️" : "🌙";
+  // Swaps the <use> target in the inline SVG sprite rather than replacing
+  // text: an emoji renders as a different glyph on every OS, and this
+  // interface's whole argument is precision about what a thing actually is.
+  const use = $("btn-theme").querySelector("use");
+  use.setAttribute("href", effectiveTheme() === "dark" ? "#i-sun" : "#i-moon");
 }
 
 // uPlot draws axis ticks, grid lines, and legend markers on <canvas> --
@@ -82,7 +86,7 @@ function applyThemeIcon() {
 function uplotThemeColors() {
   const cs = getComputedStyle(document.documentElement);
   return {
-    ink: cs.getPropertyValue("--ink-soft").trim() || "#595959",
+    ink: cs.getPropertyValue("--ink-2").trim() || "#595959",
     grid: cs.getPropertyValue("--line").trim() || "#DCDCDC",
     risk: cs.getPropertyValue("--red").trim() || "#C81E3A",
   };
@@ -131,6 +135,9 @@ function connect() {
     pmObservedTicks = 0;
     pmLastBottleneckId = undefined;
     pmTimeline.length = 0;
+    fmBuilt = false;
+    fmNodes.clear();
+    selectedFloorStation = null;
     renderFrequency();
     renderTimeline();
 
@@ -180,18 +187,19 @@ function connect() {
 }
 
 function renderSnapshot(snap) {
-  $("v-tick").textContent = snap.tick;
-  $("v-simtime").textContent = snap.sim_time_s.toFixed(1);
-  $("v-rtf").textContent = snap.real_time_factor.toFixed(3);
-  $("v-lag").textContent = Math.round(snap.lag_s * 1000);
+  $("v-tick").textContent = snap.tick.toLocaleString();
+  $("v-seq").textContent = snap.seq.toLocaleString();
+  $("v-simtime").textContent = formatSimClock(snap.sim_time_s);
+  $("v-rtf").textContent = snap.real_time_factor.toFixed(2);
+  $("v-lag").textContent = `${Math.round(snap.lag_s * 1000)}ms`;
   $("v-compute").textContent = snap.tick_compute_ms.toFixed(1);
 
   renderBottleneck(snap.bottleneck);
+  renderConstraintEvidence(snap);
   renderStations(snap.stations, snap.bottleneck);
   renderFloorMap(snap.stations, snap.bottleneck);
   updateKpis(snap);
   updateCoverage(snap.stations);
-  updateSidebarStatus(snap);
   updateQualityPage(snap.stations);
   updateBottleneckPage(snap);
   pushHistory(snap);
@@ -202,8 +210,6 @@ function renderSnapshot(snap) {
   updateStationAlerts(snap);
   updateNarrationFollowup(snap);
   lastSnapshot = snap;
-
-  $("tb-clock").textContent = new Date().toLocaleTimeString([], { hour12: false });
 
   if (firstSimTime === null) firstSimTime = snap.sim_time_s;
   const uptimeS = snap.sim_time_s - firstSimTime;
@@ -225,38 +231,113 @@ function renderSnapshot(snap) {
 
 let firstSimTime = null;
 
-function updateKpis(snap) {
-  $("kpi-throughput").textContent = Math.round(snap.line_throughput_uph).toLocaleString();
-  $("kpi-wip").textContent = snap.wip;
+function formatSimClock(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const sec = Math.floor(seconds % 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
 
-  const cycleTimes = snap.stations.map((s) => s.cycle_time_s.value).filter((v) => v != null);
-  $("kpi-cycle").textContent = cycleTimes.length
-    ? (cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length).toFixed(1)
-    : "–";
+/* ---------------------------------------------------------------------
+ * Why THIS station is the constraint.
+ *
+ * The first thing anyone asks of a bottleneck verdict is "why isn't it the
+ * slowest station?" -- and on this line it usually isn't. Verified live:
+ * S17 was named the constraint while ranking 6th by cycle time (61.4s
+ * against S13's 68.1s); what distinguished it was the highest ACTIVE share
+ * on the line, 0.94 against S13's 0.89.
+ *
+ * That is precisely what the Active Period Method ranks on, so showing
+ * cycle time alone (as this dashboard previously did) displays the
+ * variable that does NOT decide the verdict and hides the one that does.
+ * This panel shows both side by side and states the comparison in words.
+ *
+ * `time_in_state` is already on the wire (contracts.py StationSnapshot), so
+ * none of this needs a new endpoint or a schema change.
+ * ------------------------------------------------------------------- */
 
-  $("kpi-blocked").textContent = snap.stations.filter((s) => s.state === "blocked").length;
-  $("kpi-starved").textContent = snap.stations.filter((s) => s.state === "starved").length;
+/* The momentary Active Period rule ranks on how long a station's CURRENT
+ * active period has been running -- earliest start wins. That is
+ * `active_period_elapsed_s` (schema 0.2.0), and it is the only quantity
+ * that can honestly explain the verdict.
+ *
+ * An earlier version of this panel ranked on cumulative active share from
+ * `time_in_state`. That is a DIFFERENT quantity and it visibly contradicted
+ * the verdict during line fill: on a fresh run S01 sat at 94% cumulative
+ * active while the named constraint S04 sat at 65%, because upstream
+ * stations simply start working sooner. An explanation that ranks the
+ * constraint fourth is worse than no explanation.
+ */
 
-  const risks = snap.stations.map((s) => (s.defect_risk ? s.defect_risk.value : null)).filter((v) => v != null);
-  const meanRisk = risks.length ? risks.reduce((a, b) => a + b, 0) / risks.length : null;
-  const riskKpi = $("kpi-risk");
-  if (meanRisk === null) {
-    $("kpi-risk").textContent = "–";
-    $("kpi-risk-tag").textContent = "no model";
+function activeElapsed(station) {
+  const v = station.active_period_elapsed_s;
+  return typeof v === "number" ? v : null;
+}
+
+function renderConstraintEvidence(snap) {
+  const listEl = $("ev-list");
+  const noteEl = $("ev-note");
+  if (!listEl || !noteEl) return;
+
+  const bn = snap.bottleneck;
+  const bnId = bn && bn.station_id ? bn.station_id : null;
+
+  // Only stations currently IN an active period are candidates under the
+  // momentary rule; an inactive station has no active period to rank.
+  const active = snap.stations
+    .filter((s) => activeElapsed(s) !== null)
+    .sort((a, b) => activeElapsed(b) - activeElapsed(a));
+
+  if (!active.length) {
+    listEl.innerHTML = "";
+    noteEl.textContent = "No station is currently in an active period.";
+    return;
+  }
+
+  const top = active.slice(0, 5);
+  const maxElapsed = activeElapsed(top[0]) || 1;
+
+  listEl.innerHTML = top.map((s) => {
+    const el = activeElapsed(s);
+    const ct = s.cycle_time_s.value;
+    return `<div class="ev-row ${s.station_id === bnId ? "is-bn" : ""}">
+      <span class="ev-id">${s.station_id}</span>
+      <span class="ev-track"><span class="ev-fill" style="width:${(el / maxElapsed * 100).toFixed(0)}%"></span></span>
+      <span class="ev-pct">${el.toFixed(0)}s</span>
+      <span class="ev-ct" title="cycle time per unit">${ct != null ? ct.toFixed(1) + "s" : "—"}</span>
+    </div>`;
+  }).join("");
+
+  if (!bnId) {
+    noteEl.textContent = "No constraint identified this tick.";
+    return;
+  }
+
+  const bnStation = snap.stations.find((s) => s.station_id === bnId);
+  const slowest = [...snap.stations]
+    .sort((a, b) => (b.cycle_time_s.value ?? 0) - (a.cycle_time_s.value ?? 0))[0];
+  if (!bnStation || !slowest) { noteEl.textContent = ""; return; }
+
+  const bnEl = activeElapsed(bnStation);
+  const bnCt = bnStation.cycle_time_s.value;
+  const slowCt = slowest.cycle_time_s.value;
+  const elapsedText = bnEl != null ? `${bnEl.toFixed(0)}s` : "—";
+
+  if (slowest.station_id === bnId) {
+    noteEl.innerHTML =
+      `<b>${bnId}</b> is both the slowest station ` +
+      `(${bnCt != null ? bnCt.toFixed(1) : "—"}s per unit) and the longest continuously ` +
+      `active, at <b>${elapsedText}</b> without a break.`;
   } else {
-    $("kpi-risk").textContent = `${(meanRisk * 100).toFixed(2)}%`;
-    const level = riskThreshold != null && meanRisk >= riskThreshold * 2 ? "crit"
-      : riskThreshold != null && meanRisk >= riskThreshold ? "warn" : "ok";
-    riskKpi.dataset.level = level;
-    $("kpi-risk-tag").textContent = level === "ok" ? "Normal" : level === "warn" ? "Elevated" : "High";
+    noteEl.innerHTML =
+      `<b>${bnId}</b> is not the slowest station — <b>${slowest.station_id}</b> takes ` +
+      `${slowCt != null ? slowCt.toFixed(1) : "—"}s per unit against ${bnId}'s ` +
+      `${bnCt != null ? bnCt.toFixed(1) : "—"}s. It constrains the line because it has run ` +
+      `<b>${elapsedText}</b> without going idle — the longest unbroken active period on the line, ` +
+      `which is what the Active Period Method ranks on.`;
   }
 }
 
-function updateSidebarStatus(snap) {
-  $("sb-engine-status").textContent = snap.status === "running" ? "Running" : snap.status === "faulted" ? "Faulted" : "Paused";
-  $("sb-engine-status").className = snap.status === "running" ? "sb-ok" : "";
-  $("sb-rtf").textContent = snap.real_time_factor.toFixed(2);
-}
 
 /* ---------------------------------------------------------------------
  * Floor map -- zone-grouped circular station indicators, replacing the
@@ -268,59 +349,163 @@ function updateSidebarStatus(snap) {
 
 let selectedFloorStation = null;
 
+/* ---------------------------------------------------------------------
+ * The line.
+ *
+ * Built ONCE, then mutated per tick. Rebuilding innerHTML at 8 Hz would
+ * restart every CSS animation on every frame, so the conveyor flow would
+ * never actually appear to move -- and it would throw away hover state and
+ * focus 8 times a second.
+ *
+ * What the connector between two stations shows is the real buffer between
+ * them: the DOWNSTREAM station's in-buffer (`queue_depth / buffer_capacity`).
+ * That is the single most informative thing on the whole page, because a
+ * constraint has a signature you can read off it directly -- buffers filling
+ * upstream of it, draining downstream of it. Marching dashes run only while
+ * the downstream station is actually working, so the line visibly moves when
+ * material moves and visibly stalls when it does not.
+ * ------------------------------------------------------------------- */
+
+const ZONE_LABEL = {
+  body: "Body construction",
+  paint: "Paint",
+  final: "Final assembly",
+};
+
+let fmBuilt = false;
+const fmNodes = new Map(); // station_id -> {node, circle, ct, link, fill}
+
 function renderFloorMap(stations, bottleneck) {
+  if (!fmBuilt) buildFloorMap(stations);
+  updateFloorMap(stations, bottleneck);
+}
+
+function buildFloorMap(stations) {
   const byZone = {};
   for (const st of stations) (byZone[st.zone] ||= []).push(st);
-  const bottleneckId = bottleneck ? bottleneck.station_id : null;
 
   const el = $("floor-map");
+  if (!el) return;
   el.innerHTML = "";
+  fmNodes.clear();
+
   for (const zone of ZONE_ORDER) {
     const zoneStations = byZone[zone];
     if (!zoneStations) continue;
+
     const block = document.createElement("div");
-    const title = document.createElement("div");
-    title.className = "fm-zone-title";
-    title.textContent = `${zone} — ${zoneStations.length} stations`;
+    block.className = "fm-zone";
+
+    const head = document.createElement("div");
+    head.className = "fm-zone-head";
+    // The station range is read off the payload, never hardcoded: the zone
+    // split is scenario configuration (body 1-12, paint 13-18, final 19-30)
+    // and a different YAML must just work.
+    head.innerHTML =
+      `<span class="fm-zone-name">${ZONE_LABEL[zone] || zone}</span>` +
+      `<span class="fm-zone-range">${zoneStations[0].station_id}–${zoneStations[zoneStations.length - 1].station_id}</span>` +
+      `<span class="fm-zone-count">${zoneStations.length} stations</span>`;
+
     const row = document.createElement("div");
     row.className = "fm-row";
+
     zoneStations.forEach((st, i) => {
-      const node = buildFmNode(st, st.station_id === bottleneckId);
+      const isLast = i === zoneStations.length - 1;
+      const node = document.createElement("button");
+      node.type = "button";
+      node.className = "fm-node" + (isLast ? " is-last" : "");
+      node.innerHTML =
+        `<span class="fm-circle">${st.station_id.replace("S", "")}</span>` +
+        `<span class="fm-ct">–</span>` +
+        (isLast ? "" : `<span class="fm-link"><span class="fm-link-fill"></span></span>`);
+
+      node.addEventListener("click", () => {
+        selectedFloorStation = st.station_id;
+        const cur = lastSnapshot && lastSnapshot.stations.find((x) => x.station_id === st.station_id);
+        if (cur) renderStationDetailBar(cur);
+        if (lastSnapshot) updateFloorMap(lastSnapshot.stations, lastSnapshot.bottleneck);
+      });
+
       row.appendChild(node);
-      if (i < zoneStations.length - 1) {
-        const arrow = document.createElement("span");
-        arrow.className = "fm-arrow";
-        arrow.textContent = "→";
-        row.appendChild(arrow);
-      }
+      fmNodes.set(st.station_id, {
+        node,
+        ct: node.querySelector(".fm-ct"),
+        link: node.querySelector(".fm-link"),
+        fill: node.querySelector(".fm-link-fill"),
+      });
     });
-    block.appendChild(title);
+
+    block.appendChild(head);
     block.appendChild(row);
     el.appendChild(block);
   }
+  fmBuilt = true;
 }
 
-function buildFmNode(st, isBottleneck) {
-  const node = document.createElement("div");
-  const displayState = ["down", "repair", "setup"].includes(st.state) ? "down" : st.state;
-  node.className = "fm-node" + (isBottleneck ? " is-bottleneck" : "") + (st.station_id === selectedFloorStation ? " is-selected" : "");
-  node.dataset.state = displayState;
-  node.innerHTML = `<span class="fm-circle">${st.station_id.replace("S", "")}</span>`;
-  node.title = `${st.station_id} — ${st.state}`;
-  node.addEventListener("click", () => {
-    selectedFloorStation = st.station_id;
-    renderStationDetailBar(st);
-    if (lastSnapshot) renderFloorMap(lastSnapshot.stations, lastSnapshot.bottleneck);
+function updateFloorMap(stations, bottleneck) {
+  const bottleneckId = bottleneck ? bottleneck.station_id : null;
+  const byId = new Map(stations.map((s) => [s.station_id, s]));
+
+  stations.forEach((st, idx) => {
+    const refs = fmNodes.get(st.station_id);
+    if (!refs) return;
+    const { node, ct, link, fill } = refs;
+
+    const displayState = ["down", "repair", "setup"].includes(st.state) ? "down" : st.state;
+    node.dataset.state = displayState;
+    node.classList.toggle("is-bottleneck", st.station_id === bottleneckId);
+    node.classList.toggle("is-dark", !st.instrumented);
+    node.classList.toggle("is-selected", st.station_id === selectedFloorStation);
+
+    const v = st.cycle_time_s.value;
+    const ctText = v != null ? `${v.toFixed(0)}s` : "–";
+    if (ct.textContent !== ctText) ct.textContent = ctText;
+
+    // The buffer this station feeds INTO is the next station's in-buffer.
+    const next = stations[idx + 1];
+    if (link && next && next.zone === st.zone) {
+      const cap = next.buffer_capacity || 1;
+      const occ = Math.max(0, Math.min(1, next.queue_depth / cap));
+      fill.style.width = `${(occ * 100).toFixed(0)}%`;
+      link.dataset.buffer = occ >= 0.999 ? "full" : occ <= 0.001 ? "empty" : "part";
+      // Dashes march only while the consumer is actually working, so a
+      // stalled line looks stalled instead of looping an idle animation.
+      link.classList.toggle("is-flowing", next.state === "working");
+      link.title = `buffer ${next.queue_depth}/${cap} into ${next.station_id}`;
+    } else if (link) {
+      link.dataset.buffer = "empty";
+      link.classList.remove("is-flowing");
+    }
+
+    const risk = st.defect_risk ? st.defect_risk.value : null;
+    node.classList.toggle(
+      "is-at-risk",
+      riskThreshold != null && risk != null && risk >= riskThreshold
+    );
+
+    const NL = String.fromCharCode(10);
+    node.title = [
+      `${st.station_id} · ${st.state}`,
+      `cycle ${v != null ? v.toFixed(1) + "s" : "no reading"} · queue ${st.queue_depth}/${st.buffer_capacity}`,
+      `${st.units_completed} units completed`,
+      st.instrumented ? "instrumented" : "no sensor — cycle time inferred from neighbours",
+      st.station_id === bottleneckId ? "current constraint" : "",
+    ].filter(Boolean).join(NL);
   });
-  return node;
+
+  // Keep the detail bar tracking the selected station as it changes state.
+  if (selectedFloorStation && byId.has(selectedFloorStation)) {
+    renderStationDetailBar(byId.get(selectedFloorStation));
+  }
 }
 
 function renderStationDetailBar(st) {
-  $("station-detail-bar").querySelector("h3").textContent = `Station Details — ${st.station_id}`;
-  $("sd-cycle").textContent = st.cycle_time_s.value != null ? `${st.cycle_time_s.value.toFixed(1)}s` : "—";
+  $("station-detail-bar").querySelector("h3").textContent =
+    `${st.station_id} · ${ZONE_LABEL[st.zone] || st.zone}`;
+  $("sd-cycle").textContent = st.cycle_time_s.value != null ? `${st.cycle_time_s.value.toFixed(1)} s` : "—";
   $("sd-queue").textContent = `${st.queue_depth} / ${st.buffer_capacity}`;
   $("sd-state").textContent = st.state;
-  $("sd-source").textContent = st.instrumented ? "Observed" : "Inferred";
+  $("sd-source").textContent = st.instrumented ? "observed" : "inferred";
   $("sd-confidence").textContent = st.instrumented
     ? "100%"
     : st.cycle_time_s.sensor_share != null
@@ -328,16 +513,61 @@ function renderStationDetailBar(st) {
       : "—";
 }
 
+function updateKpis(snap) {
+  $("kpi-throughput").textContent = Math.round(snap.line_throughput_uph).toLocaleString();
+  $("kpi-wip").textContent = snap.wip;
+
+  const cycleTimes = snap.stations.map((s) => s.cycle_time_s.value).filter((v) => v != null);
+  $("kpi-cycle").textContent = cycleTimes.length
+    ? (cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length).toFixed(1)
+    : "—";
+
+  // Zero blocked is the normal reading, not a broken panel: at buffer
+  // capacity 3 a station accumulates only ~5-9% blocked time over minutes,
+  // so most snapshots show none. Saying so beats leaving a judge to wonder
+  // whether the field is even wired up.
+  const blockedCount = snap.stations.filter((s) => s.state === "blocked").length;
+  $("kpi-blocked").textContent = blockedCount;
+  $("kpi-blocked-unit").textContent = blockedCount === 0 ? "none now — expected" : "stations";
+
+  $("kpi-starved").textContent = snap.stations.filter((s) => s.state === "starved").length;
+
+  const risks = snap.stations
+    .map((s) => (s.defect_risk ? s.defect_risk.value : null))
+    .filter((v) => v != null);
+  const meanRisk = risks.length ? risks.reduce((a, b) => a + b, 0) / risks.length : null;
+
+  // The whole metric cell carries the level so the label recolours with the
+  // number rather than drifting from it.
+  const riskCell = $("metric-risk");
+  if (meanRisk === null) {
+    $("kpi-risk").textContent = "—";
+    $("kpi-risk-tag").textContent = "no model loaded";
+    riskCell.dataset.level = "ok";
+  } else {
+    $("kpi-risk").textContent = `${(meanRisk * 100).toFixed(2)}%`;
+    const level = riskThreshold != null && meanRisk >= riskThreshold * 2 ? "crit"
+      : riskThreshold != null && meanRisk >= riskThreshold ? "warn" : "ok";
+    riskCell.dataset.level = level;
+    $("kpi-risk-tag").textContent =
+      level === "ok" ? "within normal range" : level === "warn" ? "elevated" : "high";
+  }
+}
+
 function updateCoverage(stations) {
   const instrumented = stations.filter((s) => s.instrumented).length;
   const dark = stations.length - instrumented;
   const frac = instrumented / stations.length;
+  // Observed/inferred use the SAME two colours here as the provenance pills
+  // everywhere else in the interface (green = measured, blue = inferred).
+  // One meaning, one colour, across every panel.
   const donut = $("coverage-donut");
-  donut.style.background = `conic-gradient(var(--purple) 0 ${(frac * 360).toFixed(1)}deg, var(--orange) 0 360deg)`;
+  donut.style.background =
+    `conic-gradient(var(--green) 0 ${(frac * 360).toFixed(1)}deg, var(--blue) 0 360deg)`;
   $("coverage-pct").textContent = `${Math.round(frac * 100)}%`;
   $("coverage-legend").innerHTML = `
-    <li><span class="cl-swatch" style="background:var(--purple)"></span>Observed <b>${instrumented} / ${stations.length}</b></li>
-    <li><span class="cl-swatch" style="background:var(--orange)"></span>Inferred <b>${dark} / ${stations.length}</b></li>
+    <li><span class="cl-swatch" style="background:var(--green)"></span>Observed <b>${instrumented} / ${stations.length}</b></li>
+    <li><span class="cl-swatch" style="background:var(--blue)"></span>Inferred <b>${dark} / ${stations.length}</b></li>
   `;
 }
 
@@ -348,6 +578,7 @@ function updateCoverage(stations) {
  * ------------------------------------------------------------------- */
 
 let selectedRiskStationId = null;
+let riskListExpanded = false;
 
 function updateQualityPage(stations) {
   const list = $("risk-list");
@@ -356,7 +587,11 @@ function updateQualityPage(stations) {
   const sorted = [...stations].sort((a, b) => (rv(b) ?? -1) - (rv(a) ?? -1));
   if (!selectedRiskStationId && sorted.length) selectedRiskStationId = sorted[0].station_id;
 
-  list.innerHTML = sorted.map((s) => {
+  const shown = riskListExpanded ? sorted : sorted.slice(0, 10);
+  const btn = $("risk-expand");
+  if (btn) btn.textContent = riskListExpanded ? "Show top 10" : `Show all ${sorted.length}`;
+
+  list.innerHTML = shown.map((s) => {
     const v = rv(s);
     const level = riskThreshold == null ? "ok" : v == null ? "ok" : v >= riskThreshold * 2 ? "crit" : v >= riskThreshold ? "warn" : "ok";
     const barWidth = v != null ? Math.min(100, v * 1000).toFixed(0) : 0;
@@ -388,13 +623,17 @@ function renderRiskExplain(station) {
     return;
   }
   const maxAbs = Math.max(...drivers.map((d) => Math.abs(d.contribution)), 0.001);
+  // A bare "−0.98" under a heading that says "contributing factors" reads as
+  // a contradiction. Name the direction instead: a negative SHAP value on a
+  // risk model lowers the score, and that is worth showing, not hiding.
   body.innerHTML = drivers.map((d) => {
     const width = (Math.abs(d.contribution) / maxAbs * 100).toFixed(0);
     const negative = d.contribution < 0;
-    return `<div class="driver-row">
+    return `<div class="driver-row ${negative ? "is-down" : "is-up"}">
       <span class="driver-name">${d.feature}</span>
       <div class="driver-bar-track"><div class="driver-bar-fill ${negative ? "is-negative" : ""}" style="width:${width}%"></div></div>
       <span class="driver-pct">${negative ? "−" : "+"}${Math.abs(d.contribution).toFixed(2)}</span>
+      <span class="driver-dir">${negative ? "lowers risk" : "raises risk"}</span>
     </div>`;
   }).join("");
 }
@@ -405,34 +644,33 @@ function renderRiskExplain(station) {
  * overview panel and Plant Manager's predicted-downtime card already use.
  * ------------------------------------------------------------------- */
 
+/* The cycle-time-by-station ranking this function used to draw was removed
+ * deliberately. It sorted on the variable the Active Period Method does NOT
+ * rank on, so it displayed the constraint at rank 6 with no explanation and
+ * invited exactly the wrong conclusion. renderConstraintEvidence() replaces
+ * it with active share beside cycle time, which is the actual decision
+ * variable. What remains here is only the forecast comparison.
+ *
+ * The old early return on the removed element would have silently killed
+ * this forecast panel too -- it guarded both halves of the function.
+ */
 function updateBottleneckPage(snap) {
-  const chart = $("bp-cycle-chart");
-  if (!chart) return;
-  const bn = snap.bottleneck;
-  const sorted = [...snap.stations].sort((a, b) => (b.cycle_time_s.value ?? 0) - (a.cycle_time_s.value ?? 0)).slice(0, 10);
-  const maxCycle = Math.max(...sorted.map((s) => s.cycle_time_s.value ?? 0), 1);
-  chart.innerHTML = sorted.map((s) => {
-    const isBn = bn && s.station_id === bn.station_id;
-    const v = s.cycle_time_s.value ?? 0;
-    return `<div class="rank-row">
-      <span class="rank-id">${s.station_id}</span>
-      <div class="risk-bar-track" style="flex:1"><div class="risk-bar-fill" data-level="${isBn ? "crit" : "ok"}" style="width:${(v / maxCycle * 100).toFixed(0)}%"></div></div>
-      <span class="rank-conf">${v.toFixed(0)}s</span>
-    </div>`;
-  }).join("");
-
   const compare = $("bp-predict-compare");
+  if (!compare) return;
+
+  const bn = snap.bottleneck;
   const pred = snap.predicted_bottleneck;
   if (!pred || !pred.station_id) {
-    compare.innerHTML = '<p class="panel-sub">No forecast available yet.</p>';
-  } else {
-    const shifting = bn && bn.station_id && pred.station_id !== bn.station_id;
-    compare.innerHTML = `
-      <div class="rank-row"><span class="rank-reason">Current</span><span class="rank-id">${bn && bn.station_id ? bn.station_id : "—"}</span></div>
-      <div class="rank-row"><span class="rank-reason">Predicted (~30 min ahead)</span><span class="rank-id">${pred.station_id}</span></div>
-      ${shifting ? '<p class="panel-sub" style="color:var(--orange);margin-top:8px">Forecast disagrees with the current verdict — a shift may be coming.</p>' : ""}
-    `;
+    compare.innerHTML = '<p class="panel-sub">No forecast yet.</p>';
+    return;
   }
+  const currentId = bn && bn.station_id ? bn.station_id : null;
+  const shifting = currentId && pred.station_id !== currentId;
+  compare.innerHTML = `
+    <div class="rank-row"><span class="rank-reason">Now</span><span class="rank-id">${currentId || "—"}</span></div>
+    <div class="rank-row"><span class="rank-reason">~30 sim-min ahead</span><span class="rank-id">${pred.station_id}</span></div>
+    ${shifting ? '<p class="panel-sub" style="color:var(--orange);margin-top:6px">Forecast disagrees with the live verdict — a shift may be forming.</p>' : ""}
+  `;
 }
 
 /* ---------------------------------------------------------------------
@@ -444,12 +682,21 @@ function updateBottleneckPage(snap) {
  * other panel on this page which is free client-side work off one stream.
  * ------------------------------------------------------------------- */
 
+// null until the user clicks a specific unit; after that the periodic
+// refetch stops re-pointing the trace panel at whatever is currently rank 1.
+let genealogyPinnedUnit = null;
+
 async function fetchGenealogyCandidates() {
   try {
     const res = await fetch("/api/twin/genealogy/candidates?limit=10");
     const data = await res.json();
     renderGenealogyCandidateList(data.candidates);
-    if (data.candidates.length) await traceUnit(data.candidates[0].unit_id, true);
+    // Auto-trace the top candidate so the panel is never empty on arrival,
+    // but never override a unit the user actually clicked -- this refetches
+    // every ~5s and would otherwise yank their selection away mid-read.
+    if (data.candidates.length && genealogyPinnedUnit === null) {
+      await traceUnit(data.candidates[0].unit_id);
+    }
   } catch {
     /* transient network hiccup -- next throttled tick tries again */
   }
@@ -471,11 +718,14 @@ function renderGenealogyCandidateList(candidates) {
     </div>
   `).join("");
   for (const row of list.querySelectorAll(".rank-row")) {
-    row.addEventListener("click", () => traceUnit(row.dataset.unitId, false));
+    row.addEventListener("click", () => {
+      genealogyPinnedUnit = row.dataset.unitId;
+      traceUnit(genealogyPinnedUnit);
+    });
   }
 }
 
-async function traceUnit(unitId, compactOnly) {
+async function traceUnit(unitId) {
   let r;
   try {
     const res = await fetch(`/api/twin/genealogy/${unitId}`);
@@ -486,17 +736,6 @@ async function traceUnit(unitId, compactOnly) {
   }
 
   const flowHtml = buildGenealogyFlowHtml(r);
-
-  const compact = $("genealogy-compact");
-  if (compact) {
-    compact.innerHTML = `
-      <div class="rc-flow">${flowHtml}</div>
-      <p class="panel-sub">Unit #${r.defect_unit_id} → likely origin <b>${r.origin_station_id}</b>
-        (${Math.round(r.confidence * 100)}% confidence)</p>
-    `;
-  }
-
-  if (compactOnly) return;
 
   $("rc-flow-panel").hidden = false;
   $("rc-unit-id").textContent = `#${r.defect_unit_id}`;
@@ -636,58 +875,62 @@ function pushHistory(snap) {
   }
 }
 
+/* uPlot sizes a <canvas> in device pixels at construction time and has no
+ * notion of CSS-fluid width. The old fixed 380px left a visible gutter in
+ * every grid cell wider than that, and clipped in every cell narrower.
+ * Measure the actual container instead, and re-measure on resize.
+ */
+const CHART_H = 150;
+
+function chartWidth(containerId) {
+  const el = $(containerId);
+  // clientWidth is 0 while the containing .view is still hidden -- fall back
+  // rather than constructing a zero-width chart that never repaints.
+  return (el && el.clientWidth) ? el.clientWidth : 360;
+}
+
+function makeChart(containerId, stroke, data) {
+  return new uPlot(
+    {
+      width: chartWidth(containerId),
+      height: CHART_H,
+      series: [{}, { stroke, width: 1.75 }],
+      scales: { x: { time: false } },
+      axes: themedAxes(),
+      legend: { show: false },
+      cursor: { show: false },
+    },
+    data,
+    $(containerId)
+  );
+}
+
+// Series colours are read from the live CSS custom properties, not
+// hardcoded a second time here -- the same discipline the axis colours
+// already follow, so a theme change can never leave a stroke behind.
+function seriesColors() {
+  const cs = getComputedStyle(document.documentElement);
+  return {
+    throughput: cs.getPropertyValue("--purple").trim() || "#A100FF",
+    wip: cs.getPropertyValue("--orange").trim() || "#E8590C",
+    risk: cs.getPropertyValue("--red").trim() || "#C81E3A",
+  };
+}
+
 function drawCharts() {
+  const c = seriesColors();
   const throughputData = [history.ticks, history.throughput];
   const wipData = [history.ticks, history.wip];
-
-  if (!throughputChart) {
-    throughputChart = new uPlot(
-      {
-        width: 380,
-        height: 160,
-        series: [{}, { stroke: "#A100FF", width: 2 }],
-        scales: { x: { time: false } },
-        axes: themedAxes(),
-      },
-      throughputData,
-      $("chart-throughput")
-    );
-  } else {
-    throughputChart.setData(throughputData);
-  }
-
-  if (!wipChart) {
-    wipChart = new uPlot(
-      {
-        width: 380,
-        height: 160,
-        series: [{}, { stroke: "#E8590C", width: 2 }],
-        scales: { x: { time: false } },
-        axes: themedAxes(),
-      },
-      wipData,
-      $("chart-wip")
-    );
-  } else {
-    wipChart.setData(wipData);
-  }
-
   const riskData = [history.ticks, history.risk];
-  if (!riskChart) {
-    riskChart = new uPlot(
-      {
-        width: 380,
-        height: 160,
-        series: [{}, { stroke: uplotThemeColors().risk, width: 2 }],
-        scales: { x: { time: false } },
-        axes: themedAxes(),
-      },
-      riskData,
-      $("chart-risk")
-    );
-  } else {
-    riskChart.setData(riskData);
-  }
+
+  if (!throughputChart) throughputChart = makeChart("chart-throughput", c.throughput, throughputData);
+  else throughputChart.setData(throughputData);
+
+  if (!wipChart) wipChart = makeChart("chart-wip", c.wip, wipData);
+  else wipChart.setData(wipData);
+
+  if (!riskChart) riskChart = makeChart("chart-risk", c.risk, riskData);
+  else riskChart.setData(riskData);
 }
 
 function populateStationSelect(ids) {
@@ -746,6 +989,9 @@ function killStream() {
   if (es) es.close();
   setLamp("closed");
   document.body.classList.add("stream-killed");
+  // Beat 3 of docs/VIDEO_SCRIPT.md: the freeze has to be self-narrating, so
+  // a recording shows WHY every number stopped without a voiceover.
+  $("proof-frozen").hidden = false;
   $("btn-kill").disabled = true;
   $("btn-resume").disabled = false;
 }
@@ -753,6 +999,7 @@ function killStream() {
 function resumeStream() {
   killed = false;
   document.body.classList.remove("stream-killed");
+  $("proof-frozen").hidden = true;
   $("btn-kill").disabled = false;
   $("btn-resume").disabled = true;
   connect();
@@ -867,41 +1114,40 @@ function pushPmHistory(snap) {
 }
 
 function drawPmCharts() {
+  const c = seriesColors();
   const throughputData = [pmHistory.ticks, pmHistory.throughput];
   const wipData = [pmHistory.ticks, pmHistory.wip];
 
-  if (!pmThroughputChart) {
-    pmThroughputChart = new uPlot(
-      {
-        width: 380,
-        height: 160,
-        series: [{}, { stroke: "#A100FF", width: 2 }],
-        scales: { x: { time: false } },
-        axes: themedAxes(),
-      },
-      throughputData,
-      $("pm-chart-throughput")
-    );
-  } else {
-    pmThroughputChart.setData(throughputData);
-  }
+  if (!pmThroughputChart) pmThroughputChart = makeChart("pm-chart-throughput", c.throughput, throughputData);
+  else pmThroughputChart.setData(throughputData);
 
-  if (!pmWipChart) {
-    pmWipChart = new uPlot(
-      {
-        width: 380,
-        height: 160,
-        series: [{}, { stroke: "#E8590C", width: 2 }],
-        scales: { x: { time: false } },
-        axes: themedAxes(),
-      },
-      wipData,
-      $("pm-chart-wip")
-    );
-  } else {
-    pmWipChart.setData(wipData);
+  if (!pmWipChart) pmWipChart = makeChart("pm-chart-wip", c.wip, wipData);
+  else pmWipChart.setData(wipData);
+}
+
+/* Re-measure every chart against its container. Called on window resize and
+ * on a persona switch -- a chart built while its .view was hidden measured
+ * 0 and fell back to 360, which is only correct by accident.
+ */
+function resizeCharts() {
+  for (const [chart, id] of [
+    [throughputChart, "chart-throughput"],
+    [wipChart, "chart-wip"],
+    [riskChart, "chart-risk"],
+    [pmThroughputChart, "pm-chart-throughput"],
+    [pmWipChart, "pm-chart-wip"],
+  ]) {
+    if (!chart) continue;
+    const w = chartWidth(id);
+    if (w > 0 && w !== chart.width) chart.setSize({ width: w, height: CHART_H });
   }
 }
+
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(resizeCharts, 120);
+});
 
 // Axis colors are read once at chart-construction time (uPlot has no live
 // "update this option" path for axes), so a theme switch has to tear down
@@ -1008,7 +1254,6 @@ function pushAlert(severity, title, detail, tick) {
 
 function renderAlerts() {
   renderAlertsInto("alerts-list", alerts);
-  renderAlertsInto("alerts-list-compact", alerts.slice(0, 5));
 
   const bellCount = $("tb-bell-count");
   bellCount.textContent = alerts.length > 99 ? "99+" : String(alerts.length);
@@ -1169,9 +1414,30 @@ function switchView(viewId) {
   for (const view of document.querySelectorAll(".view")) {
     view.hidden = view.id !== viewId;
   }
-  for (const item of document.querySelectorAll(".sb-item")) {
-    item.classList.toggle("is-active", item.dataset.view === viewId);
+  for (const item of document.querySelectorAll(".persona")) {
+    const active = item.dataset.view === viewId;
+    item.classList.toggle("is-active", active);
+    item.setAttribute("aria-selected", active ? "true" : "false");
   }
+  // A chart constructed inside a hidden view measured a zero-width
+  // container and fell back to a default. Now that the view is visible,
+  // re-measure -- otherwise the Plant Manager charts stay the wrong width
+  // for as long as the tab is open.
+  resizeCharts();
+}
+
+/* ---------------------------------------------------------------------
+ * Alerts drawer
+ * ------------------------------------------------------------------- */
+
+function openAlerts() {
+  $("alerts-drawer").hidden = false;
+  $("drawer-scrim").hidden = false;
+}
+
+function closeAlerts() {
+  $("alerts-drawer").hidden = true;
+  $("drawer-scrim").hidden = true;
 }
 
 async function restartEngine() {
@@ -1197,28 +1463,23 @@ $("btn-kill").addEventListener("click", killStream);
 $("btn-resume").addEventListener("click", resumeStream);
 $("btn-restart").addEventListener("click", restartEngine);
 
-for (const item of document.querySelectorAll(".sb-item")) {
+for (const item of document.querySelectorAll(".persona")) {
   item.addEventListener("click", () => switchView(item.dataset.view));
 }
-for (const link of document.querySelectorAll(".btn-link[data-goto]")) {
-  link.addEventListener("click", () => switchView(link.dataset.goto));
-}
-$("btn-help").addEventListener("click", () => {
-  $("intro-panel").open = !$("intro-panel").open;
-});
-$("tb-bell").addEventListener("click", () => switchView("view-alerts-page"));
 
-const ROLE_CYCLE = [
-  { label: "FS  Floor Supervisor", view: "view-overview" },
-  { label: "PM  Plant Manager", view: "view-trends" },
-  { label: "LD  Leadership", view: "view-reports-page" },
-];
-let roleIndex = 0;
-$("btn-role").addEventListener("click", () => {
-  roleIndex = (roleIndex + 1) % ROLE_CYCLE.length;
-  const role = ROLE_CYCLE[roleIndex];
-  $("btn-role").innerHTML = role.label;
-  switchView(role.view);
+/* Alerts live in a drawer rather than a nav destination: an alert is an
+ * interruption, and making the supervisor leave the line view to read one
+ * is exactly backwards. */
+$("risk-expand").addEventListener("click", () => {
+  riskListExpanded = !riskListExpanded;
+  if (lastSnapshot) updateQualityPage(lastSnapshot.stations);
+});
+
+$("tb-bell").addEventListener("click", openAlerts);
+$("drawer-close").addEventListener("click", closeAlerts);
+$("drawer-scrim").addEventListener("click", closeAlerts);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeAlerts();
 });
 
 $("ld-budget").addEventListener("input", (e) => {

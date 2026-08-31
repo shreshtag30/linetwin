@@ -5,7 +5,7 @@ validated against our own ground truth, defect-risk prediction with a stated hon
 and graph-based inference at sensor-poor stations.
 
 Built for the **Accenture Innovation Challenge 2026, Round 2, Problem Track 4 "DigitalTwin.ai"** as
-the Working Prototype deliverable. **160/160 tests green, CI green on ubuntu + windows.**
+the Working Prototype deliverable. **164 tests passing, CI green on Ubuntu + Windows.**
 
 ---
 
@@ -19,13 +19,17 @@ uv run python tools/train_station_risk.py       # trains Model B (monotone XGBoo
 uv run python tools/run_server.py
 ```
 
-Then open **http://127.0.0.1:8000/**. Three tabs — Floor Supervisor, Plant Manager, Leadership —
-share one live stream. Try the perturbation slider on the Floor Supervisor tab (any station,
-any multiplier 0.1×–10×) and watch the bottleneck, throughput, and WIP charts respond within ~2
-seconds; then check the Plant Manager tab for the rolling-horizon forecast and the
-shifting-bottleneck timeline it produces.
+Then open **http://127.0.0.1:8000/**. One dashboard, four tabs — **Floor Supervisor**,
+**Plant Manager**, **Leadership**, and **Method** — all reading a single live SSE stream. The
+first three are the brief's three stakeholders; the navigation is the argument, not decoration.
 
-`uv run pytest -q` runs the full suite (160 tests, ~50s). `uv run ruff check .` for lint.
+Try the perturbation control on the Floor Supervisor tab (any station, any multiplier 0.1×–10×)
+and watch the constraint move on the line map, with the charts and alerts responding within ~2
+seconds. Then open Plant Manager for the rolling-horizon forecast, the shifting-bottleneck
+timeline, and per-unit defect genealogy.
+
+`uv run pytest -q` runs the full suite (164 passing, 4 skipped until you generate training data;
+~3 min). `uv run ruff check .` for lint.
 
 ---
 

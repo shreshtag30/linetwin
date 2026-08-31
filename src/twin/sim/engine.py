@@ -418,6 +418,11 @@ class Engine:
             time_in_state=(
                 {s: t / total_time for s, t in station.time_in_state.items()} if total_time else {}
             ),
+            active_period_elapsed_s=(
+                max(0.0, self.env.now - station.active_period_start)
+                if station.active_period_start is not None
+                else None
+            ),
         )
 
     async def _publish_snapshot(

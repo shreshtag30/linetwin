@@ -22,11 +22,6 @@ from twin.sim.engine import Engine
 from .sse import make_stream_route
 
 WEB_DIR = Path(__file__).resolve().parents[3] / "web"
-# The Control Center (docs/CONTROL_CENTER.md) is a separate, parallel
-# prototype -- built alongside the primary dashboard rather than replacing
-# it, per explicit instruction. It reads the exact same live engine through
-# these same routes; nothing about the backend is duplicated for it.
-CONTROL_CENTER_DIR = Path(__file__).resolve().parents[3] / "web-control-center"
 
 
 def make_control_routes(engine: Engine) -> APIRouter:
@@ -128,11 +123,11 @@ def make_control_routes(engine: Engine) -> APIRouter:
 
     @router.get("/api/twin/genealogy/candidates")
     async def genealogy_candidates(limit: int = Query(default=10, ge=1, le=50)) -> dict:
-        # diagnostic/genealogy.py is built and tested (Phase 9) but was never
-        # wired into any live view -- the Control Center's Root Cause screen
-        # is its first real API surface. Ranks recently-completed units by
-        # their own path's single most anomalous cycle time, so a caller
-        # doesn't need to already know a unit_id to find one worth tracing.
+        # diagnostic/genealogy.py was built and tested in Phase 9 but had no
+        # API surface until the dashboard's Plant Manager view needed one.
+        # Ranks recently-completed units by their own path's single most
+        # anomalous cycle time, so a caller does not need to already know a
+        # unit_id in order to find one worth tracing.
         candidates = list_defect_candidates(engine.line.events, limit=limit)
         return {
             "candidates": [
@@ -186,19 +181,6 @@ def create_app(scenario_path: Path | str, *, seed: int | None = None) -> FastAPI
         methods=["GET"],
         response_class=EventSourceResponse,
     )
-
-    # Mounted before the "/" catch-all below, for the same reason API routes
-    # are registered before it: Starlette matches mounts in registration
-    # order by prefix, so "/" registered first would shadow "/control-center"
-    # entirely (every path starts with "/"). This mount has nothing to do
-    # with the API-vs-static ordering rule below -- it is its OWN instance of
-    # the identical rule, one level up.
-    if CONTROL_CENTER_DIR.is_dir():
-        app.mount(
-            "/control-center",
-            StaticFiles(directory=CONTROL_CENTER_DIR, html=True),
-            name="control-center",
-        )
 
     # Mounted LAST, deliberately: a Mount is matched like any other route in
     # registration order, so mounting the static frontend before the API

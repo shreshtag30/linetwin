@@ -3,11 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LineTwin — Live Overview</title>
+  <title>LineTwin — Line 30 Digital Twin</title>
   <script>
     // Runs before CSS paints, so the page never flashes the wrong theme.
-    // No stored preference = follow the OS (styles.css handles that itself
-    // via prefers-color-scheme); a stored preference overrides it.
     (function () {
       try {
         var saved = localStorage.getItem("linetwin-theme");
@@ -18,417 +16,471 @@
     })();
   </script>
   <link rel="stylesheet" href="vendor/uplot/uPlot.min.css">
-  <!-- v= is a cache-buster, bumped by hand on every edit to styles.css/app.js.
-       StaticFiles has no build step / content-hashed filenames, so without
-       this a browser's ordinary HTTP cache can keep serving a stale script
-       after a deploy indefinitely -- confirmed during this redesign: a plain
-       reload kept re-running old cached JS with no console error at all. -->
-  <link rel="stylesheet" href="styles.css?v=7">
+  <!-- v= is a hand-bumped cache-buster. StaticFiles has no build step and no
+       content-hashed filenames, so without it a browser cache can serve stale
+       JS after a deploy indefinitely. -->
+  <link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
 
-  <div class="shell">
+<svg width="0" height="0" class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <g id="i-sun"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.2v2.4M12 19.4v2.4M2.2 12h2.4M19.4 12h2.4M5.1 5.1l1.7 1.7M17.2 17.2l1.7 1.7M18.9 5.1l-1.7 1.7M6.8 17.2l-1.7 1.7"/></g>
+    <g id="i-moon"><path d="M20 14.6A8.6 8.6 0 1 1 9.4 4a6.7 6.7 0 0 0 10.6 10.6z"/></g>
+    <g id="i-bell"><path d="M18 8.4A6 6 0 0 0 6 8.4c0 6.2-2.1 7.2-2.1 7.2h16.2S18 14.6 18 8.4"/><path d="M10.2 19.4a2.1 2.1 0 0 0 3.6 0"/></g>
+    <g id="i-close"><path d="M18.2 5.8 5.8 18.2M5.8 5.8l12.4 12.4"/></g>
+  </defs>
+</svg>
 
-    <aside class="sidebar">
-      <div class="sb-brand">
-        <div class="sb-accenture"><span class="sb-chevron">&gt;</span>accenture</div>
-        <div class="sb-product">LineTwin</div>
-        <div class="sb-product-sub">Digital Twin Prototype</div>
+<div class="app">
+
+  <!-- ================= Masthead ================= -->
+  <header class="masthead">
+    <div class="mh-left">
+      <span class="mh-brand">
+        <span class="mh-mark" aria-hidden="true">&gt;</span>
+        <span class="mh-name">LineTwin</span>
+      </span>
+      <span class="mh-rule"></span>
+      <span class="mh-context"><b>Line 30</b><span>Body &middot; Paint &middot; Final assembly</span></span>
+    </div>
+    <div class="mh-right">
+      <button class="ibtn" id="tb-bell" title="Alerts" aria-label="Alerts">
+        <svg class="ico" viewBox="0 0 24 24"><use href="#i-bell"/></svg>
+        <span class="ibtn-count" id="tb-bell-count" hidden>0</span>
+      </button>
+      <button class="ibtn" id="btn-theme" title="Light / dark" aria-label="Toggle theme">
+        <svg class="ico" viewBox="0 0 24 24"><use href="#i-moon"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= Live-proof strip =================
+       Every falsifiability signal in one band, on every tab, above the
+       fold. A recorded demo cannot scroll — so the evidence that this is
+       a running process, and the controls that disprove it, live here.
+       ==================================================== -->
+  <div class="proof" id="proof-strip">
+    <div class="proof-left">
+      <span class="lamp" id="lamp" data-state="connecting"></span>
+      <span class="proof-state" id="v-readystate">connecting</span>
+      <span class="proof-rule"></span>
+      <span class="pv"><i>tick</i><b id="v-tick">–</b></span>
+      <span class="pv"><i>seq</i><b id="v-seq">–</b></span>
+      <span class="pv"><i>sim</i><b id="v-simtime">–</b></span>
+      <span class="pv"><i>rtf</i><b id="v-rtf">–</b></span>
+      <span class="pv"><i>lag</i><b id="v-lag">–</b></span>
+    </div>
+    <div class="proof-right">
+      <button class="tbtn" id="btn-kill" title="Close the live connection to show the dashboard freeze without the server.">Kill stream</button>
+      <button class="tbtn" id="btn-resume" disabled>Resume</button>
+      <button class="tbtn" id="btn-restart" title="Restart from tick zero with a fresh run.">Restart</button>
+    </div>
+  </div>
+  <p class="proof-frozen" id="proof-frozen" hidden>Stream closed. Every value below is frozen at its last received tick.</p>
+
+  <!-- ================= Persona tabs ================= -->
+  <nav class="personas" role="tablist" aria-label="Stakeholder views">
+    <button class="persona is-active" data-view="view-floor" role="tab" aria-selected="true">
+      <span class="p-role">Floor Supervisor</span><span class="p-need">Right now</span>
+    </button>
+    <button class="persona" data-view="view-plant" role="tab" aria-selected="false">
+      <span class="p-role">Plant Manager</span><span class="p-need">Across the shift</span>
+    </button>
+    <button class="persona" data-view="view-leadership" role="tab" aria-selected="false">
+      <span class="p-role">Leadership</span><span class="p-need">The case</span>
+    </button>
+    <button class="persona" data-view="view-method" role="tab" aria-selected="false">
+      <span class="p-role">Method</span><span class="p-need">How it is proven</span>
+    </button>
+  </nav>
+
+  <main class="canvas">
+
+    <!-- ============================================================
+         FLOOR SUPERVISOR — ordered as the causal loop:
+         see the line, understand the verdict, change it, watch it respond.
+         ============================================================ -->
+    <section class="view" id="view-floor" role="tabpanel">
+
+      <div class="metrics">
+        <div class="metric"><span class="m-label">Throughput</span><span class="m-value" id="kpi-throughput">–</span><span class="m-unit">units / hr</span></div>
+        <div class="metric"><span class="m-label">WIP</span><span class="m-value" id="kpi-wip">–</span><span class="m-unit">units on line</span></div>
+        <div class="metric"><span class="m-label">Mean cycle</span><span class="m-value" id="kpi-cycle">–</span><span class="m-unit">seconds</span></div>
+        <div class="metric"><span class="m-label">Blocked</span><span class="m-value" id="kpi-blocked">–</span><span class="m-unit" id="kpi-blocked-unit">stations</span></div>
+        <div class="metric"><span class="m-label">Starved</span><span class="m-value" id="kpi-starved">–</span><span class="m-unit">stations</span></div>
+        <div class="metric" id="metric-risk"><span class="m-label">Mean defect risk</span><span class="m-value" id="kpi-risk">–</span><span class="m-unit" id="kpi-risk-tag">–</span></div>
       </div>
 
-      <nav class="sb-nav">
-        <button class="sb-item is-active" data-view="view-overview"><span class="sb-ico">&#9635;</span>Live Overview</button>
-        <button class="sb-item" data-view="view-stations"><span class="sb-ico">&#9633;</span>Stations</button>
-        <button class="sb-item" data-view="view-bottleneck-page"><span class="sb-ico">&#8853;</span>Bottleneck</button>
-        <button class="sb-item" data-view="view-quality"><span class="sb-ico">&#9670;</span>Quality &amp; Defects</button>
-        <button class="sb-item" data-view="view-trends"><span class="sb-ico">&#8599;</span>Trends</button>
-        <button class="sb-item" data-view="view-alerts-page"><span class="sb-ico">&#9888;</span>Alerts</button>
-        <button class="sb-item" data-view="view-reports-page"><span class="sb-ico">&#9776;</span>Reports</button>
-        <button class="sb-item" data-view="view-settings"><span class="sb-ico">&#9881;</span>Settings</button>
-      </nav>
+      <div class="grid grid-map">
 
-      <div class="sb-status">
-        <h3>System Status</h3>
-        <div class="sb-status-row"><span>Twin Engine</span><b id="sb-engine-status" class="sb-ok">Running</b></div>
-        <div class="sb-status-row"><span>Data Stream</span><b id="sb-stream-status" class="sb-ok">Live</b></div>
-        <div class="sb-status-row"><span>Real-Time Factor</span><b id="sb-rtf">–</b></div>
-        <div class="sb-status-row"><span>Uptime</span><b id="sb-uptime">–</b></div>
+        <section class="card" id="panel-line">
+          <header class="card-head">
+            <h2>The line</h2>
+            <span class="head-note">Click a station</span>
+          </header>
+
+          <div class="legend">
+            <span class="lg"><i class="sw" data-state="working"></i>Working</span>
+            <span class="lg"><i class="sw" data-state="starved"></i>Starved</span>
+            <span class="lg"><i class="sw" data-state="blocked"></i>Blocked</span>
+            <span class="lg"><i class="sw" data-state="down"></i>Down</span>
+            <span class="lg"><i class="sw sw-dark"></i>No sensor</span>
+            <span class="lg"><i class="sw-buf"><i></i></i>Buffer between stations &mdash; fills before a constraint, empties after it</span>
+          </div>
+
+          <div id="floor-map" class="floor-map"></div>
+
+          <div class="station-detail" id="station-detail-bar">
+            <h3>Select a station</h3>
+            <dl class="kv kv-5">
+              <div><dt>Cycle</dt><dd id="sd-cycle">–</dd></div>
+              <div><dt>Queue</dt><dd id="sd-queue">–</dd></div>
+              <div><dt>State</dt><dd id="sd-state">–</dd></div>
+              <div><dt>Source</dt><dd id="sd-source">–</dd></div>
+              <div><dt>Confidence</dt><dd id="sd-confidence">–</dd></div>
+            </dl>
+          </div>
+        </section>
+
+        <section class="card" id="panel-constraint">
+          <header class="card-head">
+            <h2>Current constraint</h2>
+          </header>
+
+          <div class="bn-hero">
+            <span class="bn-station" id="bn-station">–</span>
+            <span class="tag" id="bn-confidence" data-level="none">–</span>
+          </div>
+          <p class="bn-method">Active Period Method &middot; momentary</p>
+
+          <div class="meter">
+            <span class="meter-label">Detector confidence</span>
+            <span class="meter-track"><span class="meter-fill" id="bn-conf-fill"></span></span>
+          </div>
+
+          <dl class="kv kv-2 kv-tight">
+            <div><dt>Runner-up</dt><dd id="bn-runnerup">–</dd></div>
+            <div><dt>Mode</dt><dd class="mode" id="bn-mode"></dd></div>
+          </dl>
+
+          <!-- The evidence for the verdict, not just the verdict. The
+               constraint is rarely the slowest station, which is the first
+               thing anyone asks; this answers it from the live payload. -->
+          <h3 class="mini-h">Why this station <span class="mini-sub">unbroken active run &middot; cycle time</span></h3>
+          <p class="ev-note" id="ev-note">–</p>
+          <div class="ev-list" id="ev-list"></div>
+
+          <p class="bn-explanation" id="bn-explanation">Waiting for first tick.</p>
+        </section>
       </div>
 
-      <a class="sb-back" href="/control-center/">Control Center prototype &rarr;</a>
-    </aside>
+      <div class="grid grid-1-2">
 
-    <div class="main-wrap">
+        <section class="card" id="panel-perturb">
+          <header class="card-head">
+            <h2>Perturb the line</h2>
+            <span class="head-note">Changes the running simulation</span>
+          </header>
 
-      <header class="topbar2">
-        <div class="tb-title">
-          <h1>Line 30 &middot; Body&ndash;Paint&ndash;Final Assembly</h1>
-          <span class="tb-live-badge"><span class="lamp" id="lamp" data-state="connecting" title="Connection to the live server."></span><span id="v-readystate">connecting…</span></span>
-        </div>
-        <div class="tb-right">
-          <span class="tb-updated">Last updated <b id="tb-clock">–</b></span>
-          <button class="tb-icon-btn" id="btn-theme" title="Switch between light and dark mode" aria-label="Toggle theme">&#9789;</button>
-          <button class="tb-icon-btn" id="btn-help" title="Show the how-it-works panel" aria-label="Help">?</button>
-          <button class="tb-icon-btn tb-bell" id="tb-bell" title="Open alerts">&#128276;<span class="tb-bell-count" id="tb-bell-count" hidden>0</span></button>
-          <button class="tb-icon-btn" id="btn-kill" title="Close the live connection on purpose, to demonstrate the dashboard freezing without the server.">Kill</button>
-          <button class="tb-icon-btn" id="btn-resume" disabled title="Reconnect after Kill.">Resume</button>
-          <button class="tb-icon-btn" id="btn-restart" title="Restart the simulation from tick zero with a fresh run.">Restart</button>
-          <button class="tb-role" id="btn-role" title="Switch persona view — Floor Supervisor / Plant Manager / Leadership">FS &nbsp;Floor Supervisor</button>
-        </div>
-      </header>
-
-      <div class="intro-wrap">
-        <details class="intro-panel" id="intro-panel">
-          <summary>How LineTwin works — read this first</summary>
-          <div class="intro-body">
-            <p>
-              A <b>live simulation</b> of a 30-station vehicle assembly line (12 body · 6 paint ·
-              12 final assembly) running right now in a real Python process — nothing here is
-              pre-recorded. Every number updates 8×/second.
-            </p>
-            <ul>
-              <li><b>Bottleneck detection</b> — the Active Period Method names whichever station has
-                been continuously busy the longest (§ Bottleneck).</li>
-              <li><b>Defect-risk scoring</b> — a trained model scores every station's risk right now
-                from live queue pressure and cycle-time signals (§ Quality &amp; Defects).</li>
-              <li><b>Sensor-gap inference</b> — 8 of 30 stations have no sensor. Their values are
-                solved live from a graph equation over their neighbours and tagged
-                <i>inferred — N%</i>, never shown as if measured (§ Data Coverage).</li>
-              <li><b>Rolling-horizon prediction</b> — every second the server forks the line's
-                current state and fast-forwards ~30 simulated minutes to forecast where the
-                bottleneck is headed (§ Trends).</li>
-              <li><b>Defect genealogy</b> — tracing a flagged defect back to its likely origin
-                station, transfer-delay realigned (§ Quality &amp; Defects).</li>
-            </ul>
-            <p class="intro-try">
-              <b>Try this →</b> in the Quick Control panel, pick a station and a cycle-time
-              multiplier, then Apply. Watch the Bottleneck panel, charts, and Alerts respond within
-              a couple of seconds.
-            </p>
+          <div class="field">
+            <label for="ctl-station">Station</label>
+            <select id="ctl-station"></select>
           </div>
-        </details>
+          <div class="field">
+            <label for="ctl-mult">Cycle-time multiplier <b id="ctl-mult-val">1.0&times;</b></label>
+            <input type="range" id="ctl-mult" min="0.1" max="10" step="0.1" value="1.0">
+          </div>
+          <button id="ctl-apply" class="btn-primary">Apply</button>
+          <p class="ack" id="ctl-ack"></p>
+          <div id="ctl-narration" class="narration-wrap" hidden></div>
+        </section>
+
+        <section class="card" id="panel-trend">
+          <header class="card-head">
+            <h2>Response</h2>
+            <span class="head-note">15 s window &middot; 8 Hz</span>
+          </header>
+          <div class="charts charts-3">
+            <figure class="chart"><figcaption>Throughput &mdash; units/hr</figcaption><div id="chart-throughput"></div></figure>
+            <figure class="chart"><figcaption>WIP &mdash; units</figcaption><div id="chart-wip"></div></figure>
+            <figure class="chart"><figcaption>Mean defect risk</figcaption><div id="chart-risk"></div></figure>
+          </div>
+        </section>
       </div>
 
-      <main>
+      <div class="grid grid-2">
 
-      <!-- ================= Live Overview ================= -->
-      <section class="view" id="view-overview">
+        <section class="card" id="panel-risk">
+          <header class="card-head">
+            <h2>Defect risk</h2>
+            <span class="head-note">Model B &middot; every station, every pass</span>
+          </header>
+          <div class="risk-list" id="risk-list"></div>
+          <button class="link" id="risk-expand">Show all 30</button>
+        </section>
 
-        <div class="kpi-row">
-          <div class="kpi"><span class="kpi-label">Throughput</span><span class="kpi-value" id="kpi-throughput">–</span><span class="kpi-unit">units/hr</span></div>
-          <div class="kpi"><span class="kpi-label">WIP</span><span class="kpi-value" id="kpi-wip">–</span><span class="kpi-unit">units</span></div>
-          <div class="kpi"><span class="kpi-label">Cycle Time (Avg)</span><span class="kpi-value" id="kpi-cycle">–</span><span class="kpi-unit">s</span></div>
-          <div class="kpi"><span class="kpi-label">Blocked</span><span class="kpi-value" id="kpi-blocked">–</span><span class="kpi-unit">stations</span></div>
-          <div class="kpi"><span class="kpi-label">Starved</span><span class="kpi-value" id="kpi-starved">–</span><span class="kpi-unit">stations</span></div>
-          <div class="kpi kpi-risk"><span class="kpi-label">Quality Risk</span><span class="kpi-value" id="kpi-risk">–</span><span class="kpi-unit" id="kpi-risk-tag">–</span></div>
-        </div>
-
-        <div class="overview-grid">
-          <div class="panel map-panel">
-            <div class="panel-head">
-              <h2>Factory Floor Map</h2>
-              <details class="how-it-works">
-                <summary>How this works</summary>
-                <ul>
-                  <li>All 30 stations, grouped by zone, colored by live state.</li>
-                  <li>Click a station for detail below the map.</li>
-                </ul>
-              </details>
-            </div>
-            <div class="station-legend">
-              <span class="legend-item"><span class="legend-swatch" data-state="working"></span>Working</span>
-              <span class="legend-item"><span class="legend-swatch" data-state="blocked"></span>Blocked</span>
-              <span class="legend-item"><span class="legend-swatch" data-state="starved"></span>Starved</span>
-              <span class="legend-item"><span class="legend-swatch" data-state="down"></span>Down</span>
-            </div>
-            <div id="floor-map" class="floor-map"></div>
-            <div class="station-detail-bar" id="station-detail-bar">
-              <h3>Station Details (click a station)</h3>
-              <div class="sdb-grid">
-                <div><span class="sdb-ico">&#9202;</span>Cycle Time <b id="sd-cycle">–</b></div>
-                <div><span class="sdb-ico">&#9634;</span>Queue <b id="sd-queue">–</b></div>
-                <div><span class="sdb-ico">&#9679;</span>State <b id="sd-state">–</b></div>
-                <div><span class="sdb-ico">&#9673;</span>Data Source <b id="sd-source">–</b></div>
-                <div><span class="sdb-ico">&#8776;</span>Confidence <b id="sd-confidence">–</b></div>
-              </div>
-            </div>
+        <section class="card" id="panel-drivers">
+          <header class="card-head">
+            <h2 id="explain-title">Contributing factors</h2>
+            <span class="head-note">TreeSHAP</span>
+          </header>
+          <div id="explain-body" class="explain-body">
+            <p class="empty">Select a station.</p>
           </div>
+          <p class="footnote">Associative indicators, not confirmed causes.</p>
+        </section>
+      </div>
 
-          <div class="overview-right">
-            <div class="panel bottleneck-panel">
-              <div class="panel-head"><h2>Live Bottleneck</h2></div>
-              <div class="bn-station-row">
-                <span class="bn-station" id="bn-station">–</span>
-                <span class="pill" id="bn-confidence">–</span>
-              </div>
-              <div class="bn-sub">Active Period Method (Momentary)</div>
-              <div class="bn-confidence-row">
-                <span class="bn-conf-label">Confidence</span>
-                <div class="bn-conf-track"><div class="bn-conf-fill" id="bn-conf-fill"></div></div>
-              </div>
-              <div class="bn-runnerup-row">Runner-up: <b id="bn-runnerup">–</b></div>
-              <h3>Mode Decomposition</h3>
-              <div class="bn-mode" id="bn-mode"></div>
-              <h3>Bottleneck Walk</h3>
-              <p class="bn-explanation" id="bn-explanation">Waiting for first tick…</p>
-              <button class="btn-link" data-goto="view-bottleneck-page">View Full Analysis &rarr;</button>
-            </div>
-
-            <div class="panel coverage-panel">
-              <div class="panel-head"><h2>Data Coverage</h2></div>
-              <div class="coverage-row">
-                <div class="coverage-donut" id="coverage-donut"><div class="coverage-donut-center"><b id="coverage-pct">–</b></div></div>
-                <ul class="coverage-legend" id="coverage-legend"></ul>
-              </div>
-            </div>
-
-            <div class="panel control-panel">
-              <div class="panel-head"><h2>Quick Control</h2></div>
-              <p class="panel-sub">Apply a live perturbation (what-if) — the only control that changes the real simulation.</p>
-              <div class="control-row">
-                <label for="ctl-station">Station</label>
-                <select id="ctl-station"></select>
-              </div>
-              <div class="control-row">
-                <label for="ctl-mult">Multiplier: <b id="ctl-mult-val">1.0×</b></label>
-                <input type="range" id="ctl-mult" min="0.1" max="10" step="0.1" value="1.0">
-              </div>
-              <button id="ctl-apply" class="btn btn-primary">Apply</button>
-              <p class="control-ack" id="ctl-ack"></p>
-              <div id="ctl-narration" class="narration" hidden></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel charts-panel">
-          <div class="panel-head"><h2>Trends</h2></div>
-          <div class="chart-row-3">
-            <div class="chart-box"><h3>Throughput (units/hr)</h3><div id="chart-throughput"></div></div>
-            <div class="chart-box"><h3>WIP (units)</h3><div id="chart-wip"></div></div>
-            <div class="chart-box"><h3>Quality Risk Score</h3><div id="chart-risk"></div></div>
-          </div>
-        </div>
-
-        <div class="bottom-row">
-          <div class="panel">
-            <div class="panel-head"><h2>Live Alerts</h2></div>
-            <div id="alerts-list-compact" class="alert-list alert-list-compact">
-              <p class="panel-sub">No alerts yet.</p>
-            </div>
-            <button class="btn-link" data-goto="view-alerts-page">View all alerts &rarr;</button>
-          </div>
-          <div class="panel">
-            <div class="panel-head"><h2>Recent Defect Genealogy</h2></div>
-            <div id="genealogy-compact" class="genealogy-compact">
-              <p class="panel-sub">Not enough completed units yet.</p>
-            </div>
-            <button class="btn-link" data-goto="view-quality">View full genealogy &rarr;</button>
-          </div>
-          <div class="panel">
-            <div class="panel-head"><h2>System Vitals</h2></div>
-            <div class="vitals-list">
-              <div class="v-row"><span>Engine Tick Rate</span><b>8 Hz</b></div>
-              <div class="v-row"><span>Tick</span><b id="v-tick">–</b></div>
-              <div class="v-row"><span>Sim Time</span><b id="v-simtime">–</b> s</div>
-              <div class="v-row"><span>Real-Time Factor</span><b id="v-rtf">–</b></div>
-              <div class="v-row"><span>Engine Compute</span><b id="v-compute">–</b> ms</div>
-              <div class="v-row"><span>Lag</span><b id="v-lag">–</b> ms</div>
-            </div>
-          </div>
-        </div>
-
-      </section>
-
-      <!-- ================= Stations ================= -->
-      <section class="view" id="view-stations" hidden>
-        <div class="panel">
-          <div class="panel-head"><h2>All Stations</h2></div>
-          <div class="station-legend">
-            <span class="legend-item"><span class="legend-swatch" data-state="working"></span>Working</span>
-            <span class="legend-item"><span class="legend-swatch" data-state="starved"></span>Starved — waiting on the station before it</span>
-            <span class="legend-item"><span class="legend-swatch" data-state="blocked"></span>Blocked — can't hand off to the station after it</span>
-            <span class="legend-item"><span class="legend-swatch" data-state="down"></span>Down / repair / setup</span>
-            <span class="legend-item"><span class="confidence-pill" data-source="observed">observed</span>real sensor reading</span>
-            <span class="legend-item"><span class="confidence-pill" data-source="inferred">inferred — N%</span>estimated; N% traces to real sensor evidence</span>
+      <details class="disclosure">
+        <summary>All thirty stations</summary>
+        <div class="disclosure-body">
+          <div class="legend legend-tight">
+            <span class="lg"><i class="tag" data-source="observed">observed</i>real sensor reading</span>
+            <span class="lg"><i class="tag" data-source="inferred">inferred — N%</i>N% traces to real sensor evidence</span>
           </div>
           <div id="zones"></div>
         </div>
+      </details>
+
+    </section>
+
+    <!-- ============================================================
+         PLANT MANAGER
+         ============================================================ -->
+    <section class="view" id="view-plant" hidden role="tabpanel">
+
+      <div class="grid grid-2">
+        <section class="card" id="panel-frequency">
+          <header class="card-head">
+            <h2>Constraint residency</h2>
+            <span class="head-note">Share of observed ticks, this session</span>
+          </header>
+          <div id="pm-frequency" class="bars"></div>
+        </section>
+
+        <section class="card" id="panel-forecast">
+          <header class="card-head">
+            <h2>Forecast</h2>
+            <span class="head-note">~30 sim-min lookahead, refreshed 1 Hz</span>
+          </header>
+          <div class="bn-hero bn-hero-sm">
+            <span class="bn-station" id="pm-predicted-station">–</span>
+          </div>
+          <p class="bn-explanation" id="pm-predicted-explanation">Waiting for first forecast.</p>
+          <p class="callout" id="pm-shift-note"></p>
+          <div id="bp-predict-compare" class="compare"></div>
+        </section>
+      </div>
+
+      <section class="card">
+        <header class="card-head">
+          <h2>Shift trend</h2>
+          <span class="head-note">Longer window, same stream</span>
+        </header>
+        <div class="charts charts-2">
+          <figure class="chart"><figcaption>Throughput &mdash; units/hr</figcaption><div id="pm-chart-throughput"></div></figure>
+          <figure class="chart"><figcaption>WIP &mdash; units</figcaption><div id="pm-chart-wip"></div></figure>
+        </div>
       </section>
 
-      <!-- ================= Bottleneck (full page) ================= -->
-      <section class="view" id="view-bottleneck-page" hidden>
-        <div class="panel view-requirement">
-          <p>Answers: <b>real-time bottleneck detection</b> — which station is the constraint, how sure the detector is, and why.</p>
-        </div>
-        <div class="panel">
-          <div class="panel-head">
-            <h2>How this works</h2>
-          </div>
-          <ul class="bp-explain-list">
-            <li><b>Active Period Method</b> — every station tracks how long it's been continuously
-              "active" (working, or stopped for a reason that isn't its own fault). The longest
-              current active streak is the bottleneck.</li>
-            <li>Benchmarked against 5 alternatives across <b>three distinct engineered-bottleneck
-              scenarios</b> — active-period methods generalize best overall (90% top-1 across all
-              three), which is why this family is deployed, even though on any single scenario a
-              different comparison method can occasionally edge it out
-              (<code>docs/phases/detector_comparison_multiscenario.csv</code>). The live rule is a
-              momentary variant of that family, not a byte-for-byte replay of the offline benchmark.</li>
-            <li><b>Confidence</b> — <i>provisional</i>: the gap over the runner-up isn't yet
-              statistically clear. <i>established</i>: it is. Shown as a caveat, never used to
-              suppress or delay detection.</li>
-          </ul>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Cycle Time by Station</h2></div>
-          <div id="bp-cycle-chart" class="rank-list"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Current vs. Rolling-Horizon Forecast</h2></div>
-          <p class="panel-sub">The server forks live state and fast-forwards ~30 simulated minutes once a second.</p>
-          <div id="bp-predict-compare"></div>
-        </div>
+      <section class="card">
+        <header class="card-head">
+          <h2>Constraint movements</h2>
+          <span class="head-note">Logged with the tick it changed at</span>
+        </header>
+        <div id="pm-timeline" class="timeline"></div>
       </section>
 
-      <!-- ================= Quality & Defects ================= -->
-      <section class="view" id="view-quality" hidden>
-        <div class="panel view-requirement">
-          <p>Answers: <b>which station is most likely to produce a defect right now, and why</b> — plus tracing a flagged unit back to its likely origin.</p>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Stations by Live Defect Risk</h2></div>
-          <div class="risk-list" id="risk-list"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2 id="explain-title">Selected station — contributing factors</h2></div>
-          <div id="explain-body" class="explain-body">
-            <p class="panel-sub">Select a station above to see its top risk drivers.</p>
-          </div>
-          <div class="explain-note">Prediction drivers are associative indicators, not confirmed causes.</div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Flagged Units — Highest Cycle-Time Anomaly</h2></div>
-          <p class="panel-sub">Not a claim these are defective — a ranked worklist of what's worth tracing.</p>
-          <div class="rank-list" id="rc-candidates"></div>
-        </div>
-        <div class="panel" id="rc-flow-panel" hidden>
-          <div class="panel-head"><h2>Trace — Unit <span id="rc-unit-id">–</span></h2></div>
+      <div class="grid grid-2">
+        <section class="card">
+          <header class="card-head">
+            <h2>Units worth tracing</h2>
+            <span class="head-note">Ranked by peak cycle-time anomaly on their own path</span>
+          </header>
+          <div class="bars" id="rc-candidates"></div>
+        </section>
+
+        <section class="card" id="rc-flow-panel" hidden>
+          <header class="card-head">
+            <h2>Genealogy &mdash; unit <span id="rc-unit-id">–</span></h2>
+            <span class="head-note">Transfer-delay realigned</span>
+          </header>
           <div class="rc-flow" id="rc-flow"></div>
-          <dl class="sd-grid">
-            <dt>Likely origin</dt><dd id="rc-origin">–</dd>
-            <dt>Confidence</dt><dd id="rc-confidence">–</dd>
-            <dt>Affected units</dt><dd id="rc-affected">–</dd>
-            <dt>Realigned origin time</dt><dd id="rc-realigned">–</dd>
+          <dl class="kv kv-2">
+            <div><dt>Likely origin</dt><dd id="rc-origin">–</dd></div>
+            <div><dt>Confidence</dt><dd id="rc-confidence">–</dd></div>
+            <div><dt>Units affected</dt><dd id="rc-affected">–</dd></div>
+            <div><dt>Realigned time</dt><dd id="rc-realigned">–</dd></div>
           </dl>
-          <p class="explain-note">Confidence is a continuous, calibrated signal from cycle-time deviation — not a claim of causal certainty.</p>
+          <p class="footnote">A calibrated signal from cycle-time deviation, not causal certainty.</p>
+        </section>
+      </div>
+
+    </section>
+
+    <!-- ============================================================
+         LEADERSHIP
+         ============================================================ -->
+    <section class="view" id="view-leadership" hidden role="tabpanel">
+
+      <div class="grid grid-2">
+        <section class="card" id="panel-coverage">
+          <header class="card-head">
+            <h2>Sensor coverage</h2>
+            <span class="head-note">Fixed by the retrofit, not per tick</span>
+          </header>
+          <div class="coverage">
+            <div class="donut" id="coverage-donut"><div class="donut-hole"><b id="coverage-pct">–</b><span>wired</span></div></div>
+            <ul class="donut-legend" id="coverage-legend"></ul>
+          </div>
+          <dl class="kv kv-3">
+            <div><dt>Stations</dt><dd id="ld-station-count">–</dd></div>
+            <div><dt>Instrumented</dt><dd id="ld-instrumented-count">–</dd></div>
+            <div><dt>Dark</dt><dd id="ld-dark-count">–</dd></div>
+          </dl>
+        </section>
+
+        <section class="card" id="panel-roi">
+          <header class="card-head">
+            <h2>Risk exposure</h2>
+            <span class="head-note">Estimate, not an audited saving</span>
+          </header>
+          <div class="formula">
+            <code>units_at_risk = mean(defect_risk) &times; qc_lag_units</code>
+            <code>dollars = units_at_risk &times; rework_cost_delta</code>
+          </div>
+          <dl class="kv kv-2 kv-lg">
+            <div><dt>Mean defect risk</dt><dd id="ld-mean-risk">–</dd></div>
+            <div><dt>QC lag</dt><dd id="ld-qc-lag">–</dd></div>
+            <div><dt>Units at risk</dt><dd id="ld-units-at-risk">–</dd></div>
+            <div><dt>Rework exposed</dt><dd id="ld-dollars">–</dd></div>
+          </dl>
+          <p class="footnote">Constants in <code>src/twin/economics.py</code>, each stamped <i>synthetic — uncalibrated</i>.</p>
+        </section>
+      </div>
+
+      <section class="card" id="panel-placement">
+        <header class="card-head">
+          <h2>Next sensors to fit</h2>
+          <span class="head-note">Greedy submodular placement &middot; 1&minus;1/e guarantee</span>
+        </header>
+        <div class="field field-inline">
+          <label for="ld-budget">Budget this window</label>
+          <input type="range" id="ld-budget" min="1" max="8" step="1" value="3">
+          <b id="ld-budget-val">3</b>
+        </div>
+        <div id="ld-recommend" class="bars"></div>
+      </section>
+
+      <section class="card">
+        <header class="card-head">
+          <h2>Measured, not projected</h2>
+        </header>
+        <div class="proof-grid">
+          <div class="proof-cell"><span class="proof-n">164</span><span class="proof-t">tests passing, CI on Ubuntu and Windows</span></div>
+          <div class="proof-cell"><span class="proof-n">90.0%</span><span class="proof-t">detector top-1 across three engineered-bottleneck scenarios</span></div>
+          <div class="proof-cell"><span class="proof-n">+18.6%</span><span class="proof-t">Model B PR-AUC lift over best single feature, unseen config</span></div>
+          <div class="proof-cell"><span class="proof-n">22 / 30</span><span class="proof-t">stations wired; both graph identities hold numerically</span></div>
         </div>
       </section>
 
-      <!-- ================= Trends (Plant Manager) ================= -->
-      <section class="view" id="view-trends" hidden>
-        <div class="panel view-requirement">
-          <p>Answers: <b>three personas need different views over one model</b> — a plant manager
-            watches trends and shifts across a shift, not a single tick.</p>
+    </section>
+
+    <!-- ============================================================
+         METHOD
+         ============================================================ -->
+    <section class="view" id="view-method" hidden role="tabpanel">
+
+      <div class="grid grid-2">
+        <section class="card">
+          <header class="card-head"><h2>Mechanisms</h2></header>
+          <ol class="mech">
+            <li><b>Bottleneck detection.</b> Active Period Method — longest continuous active run wins.
+              A breakdown does not end an active period. Benchmarked over 30 scenario&times;seed trials:
+              Busy Ratio 93.3%, Active Period 90.0%. Reported as measured, not ranked to flatter the
+              deployed method.</li>
+            <li><b>Defect risk.</b> Monotone gradient boosting, isotonic-calibrated, reported at its own
+              tuned operating point.</li>
+            <li><b>Sensor-gap inference.</b> Eight dark stations solved from a graph equation over their
+              neighbours, tagged <i>inferred — N%</i> where N is an exact partition of unity.</li>
+            <li><b>Rolling horizon.</b> Live state forked and fast-forwarded ~30 sim-minutes, once a second.</li>
+            <li><b>Genealogy.</b> Per-unit event log walked backward from inspection, realigned by
+              cumulative transfer delay.</li>
+          </ol>
+        </section>
+
+        <section class="card">
+          <header class="card-head"><h2>Classification</h2></header>
+          <dl class="kv kv-stack">
+            <div><dt>Kritzinger et al. 2018</dt><dd>Digital <b>Shadow</b> — one-way data flow, no write-back.</dd></div>
+            <div><dt>Grieves &amp; Vickers 2017</dt><dd>Digital Twin <b>Prototype</b> — exists before any physical instance.</dd></div>
+            <div><dt>Villegas et al. 2025</dt><dd><b>Predictive</b> maturity — one step short of prescriptive.</dd></div>
+          </dl>
+          <p class="footnote">It does not write back to anything, so it is not a full Digital Twin. Calling it one would be the easy claim and the wrong one.</p>
+        </section>
+      </div>
+
+      <section class="card">
+        <header class="card-head">
+          <h2>Model B</h2>
+          <span class="head-note">Line config E &mdash; never trained on</span>
+        </header>
+        <div class="metrics metrics-sm">
+          <div class="metric"><span class="m-label">PR-AUC</span><span class="m-value">0.047</span><span class="m-unit">vs 0.008 no-skill</span></div>
+          <div class="metric"><span class="m-label">Over no-skill</span><span class="m-value">5.7&times;</span><span class="m-unit">precision-recall</span></div>
+          <div class="metric"><span class="m-label">ROC-AUC</span><span class="m-value">0.841</span><span class="m-unit">ranking quality</span></div>
+          <div class="metric"><span class="m-label">Over baseline</span><span class="m-value">+18.6%</span><span class="m-unit">vs cycle_time_z alone</span></div>
         </div>
-        <div class="panel">
-          <h2>Bottleneck frequency this session</h2>
-          <p class="panel-sub">Share of observed ticks each station has been named the live bottleneck.</p>
-          <div id="pm-frequency" class="freq-list"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Predicted downtime</h2></div>
-          <p class="panel-sub">Distinct from the current bottleneck — when they disagree, a shift may be coming.</p>
-          <div class="bottleneck-card" id="pm-predicted-card">
-            <div class="bn-station" id="pm-predicted-station">–</div>
-            <p class="bn-explanation" id="pm-predicted-explanation">Waiting for the first forecast…</p>
-            <p class="pm-shift-note" id="pm-shift-note"></p>
-          </div>
-        </div>
-        <div class="panel charts-panel">
-          <h2>Shift-length trend</h2>
-          <div class="chart-row">
-            <div class="chart-box"><h3>Throughput (UPH), longer window</h3><div id="pm-chart-throughput"></div></div>
-            <div class="chart-box"><h3>WIP, longer window</h3><div id="pm-chart-wip"></div></div>
-          </div>
-        </div>
-        <div class="panel">
-          <h2>Shifting-bottleneck timeline</h2>
-          <p class="panel-sub">Every time the live bottleneck verdict changes station, logged with the tick it changed at.</p>
-          <div id="pm-timeline" class="timeline"></div>
-        </div>
+        <p class="footnote">Small absolute numbers, published rather than a headline accuracy. Defects are rare —
+          no-skill scores 0.008 PR-AUC here — so the honest comparison is against that floor and the best single
+          feature. The label-generating process was published in <code>docs/DATA.md</code> before any of this was
+          computed against it.</p>
       </section>
 
-      <!-- ================= Alerts (full page) ================= -->
-      <section class="view" id="view-alerts-page" hidden>
-        <div class="panel">
-          <div class="panel-head"><h2>All Alerts</h2></div>
-          <div id="alerts-list" class="alert-list">
-            <p class="panel-sub">No alerts yet — the line is running normally.</p>
-          </div>
-        </div>
-      </section>
+      <div class="grid grid-2">
+        <section class="card">
+          <header class="card-head"><h2>Where it breaks</h2></header>
+          <ul class="limits">
+            <li>Inference recovers a dark station's <b>cycle-time trend</b>, never whether a <b>specific unit</b> was defective.</li>
+            <li>The sensor-removal degradation curve is <b>not graceful</b>. It has a knee, and we plot it.</li>
+            <li>Model B's features do not yet consume the graph layer's inferred values.</li>
+            <li>Consecutive active periods are autocorrelated, so the significance test's independence assumption does not strictly hold. Annotated, not suppressed.</li>
+            <li>The leadership figure is an estimate from named assumptions.</li>
+          </ul>
+        </section>
 
-      <!-- ================= Reports (Leadership) ================= -->
-      <section class="view" id="view-reports-page" hidden>
-        <div class="panel view-requirement">
-          <p>Answers: <b>the business case</b> — instrumentation cost against risk exposure, stated as
-            an estimate from named assumptions, never as an audited saving.</p>
-        </div>
-        <div class="panel">
-          <h2>Risk exposure (estimate)</h2>
-          <div class="formula-box">
-            <span class="fq">units_at_risk &nbsp;=&nbsp; mean(defect_risk) &times; qc_lag_units</span>
-            <span class="fq">dollars_at_stake &nbsp;=&nbsp; units_at_risk &times; rework_cost_delta</span>
-          </div>
-          <p class="panel-sub">
-            <code>src/twin/economics.py</code> — every constant stamped <i>synthetic — uncalibrated</i>.
-          </p>
-          <div class="roi-grid">
-            <div class="roi-cell"><span class="k">Mean defect risk (live)</span><span class="v" id="ld-mean-risk">–</span></div>
-            <div class="roi-cell"><span class="k">QC lag <span class="src">(config)</span></span><span class="v" id="ld-qc-lag">–</span></div>
-            <div class="roi-cell"><span class="k">Units at risk (est.)</span><span class="v" id="ld-units-at-risk">–</span></div>
-            <div class="roi-cell"><span class="k">Rework cost avoided (est.)</span><span class="v" id="ld-dollars">–</span></div>
-          </div>
-        </div>
-        <div class="panel">
-          <h2>Instrumentation — required vs. recommended</h2>
-          <p class="panel-sub">Phase 9's greedy placement (1−1/e guarantee, Krause/Singh/Guestrin 2008).</p>
-          <div class="roi-grid">
-            <div class="roi-cell"><span class="k">Stations, total</span><span class="v" id="ld-station-count">–</span></div>
-            <div class="roi-cell"><span class="k">Instrumented</span><span class="v" id="ld-instrumented-count">–</span></div>
-            <div class="roi-cell"><span class="k">Dark (uninstrumented)</span><span class="v" id="ld-dark-count">–</span></div>
-          </div>
-          <div class="control-row" style="margin-top:12px">
-            <label for="ld-budget">Sensors to add next</label>
-            <input type="range" id="ld-budget" min="1" max="8" step="1" value="3">
-            <span id="ld-budget-val">3</span>
-          </div>
-          <div id="ld-recommend" class="freq-list"></div>
-        </div>
-      </section>
+        <section class="card">
+          <header class="card-head"><h2>This run</h2></header>
+          <dl class="kv kv-2">
+            <div><dt>Engine compute</dt><dd><span id="v-compute">–</span> ms</dd></div>
+            <div><dt>Uptime</dt><dd id="sb-uptime">–</dd></div>
+          </dl>
+          <p class="footnote" id="run-meta-footer"></p>
+        </section>
+      </div>
 
-      <!-- ================= Settings ================= -->
-      <section class="view" id="view-settings" hidden>
-        <div class="panel">
-          <div class="panel-head"><h2>Appearance</h2></div>
-          <p class="panel-sub">Light and dark both use the exact Accenture tokens committed for this project.</p>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Connection Diagnostics</h2></div>
-          <p class="panel-sub">Kill the stream to demonstrate the dashboard freezing without the server, then resume. Restart resets the simulation from tick zero.</p>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2>Positioning</h2></div>
-          <p class="panel-sub">Digital Shadow (Kritzinger 2018) · Digital Twin Prototype (Grieves &amp; Vickers 2017) · Predictive maturity (Villegas et al. 2025)</p>
-          <p class="panel-sub" id="run-meta-footer"></p>
-        </div>
-      </section>
+    </section>
 
-      </main>
-    </div>
-  </div>
+  </main>
 
-  <script src="vendor/uplot/uPlot.iife.min.js"></script>
-  <script src="app.js?v=6"></script>
+  <footer class="foot">
+    <span>Accenture Innovation Challenge 2026 &middot; Track 4 &ldquo;DigitalTwin.ai&rdquo;</span>
+    <span>Digital Shadow &middot; Predictive maturity &middot; Apache-2.0</span>
+  </footer>
+</div>
+
+<div class="drawer-scrim" id="drawer-scrim" hidden></div>
+<aside class="drawer" id="alerts-drawer" hidden aria-label="Alerts">
+  <header class="drawer-head">
+    <h2>Alerts</h2>
+    <button class="ibtn" id="drawer-close" aria-label="Close"><svg class="ico" viewBox="0 0 24 24"><use href="#i-close"/></svg></button>
+  </header>
+  <p class="drawer-sub">Rising edge only — constraint moves, threshold crossings, sustained blocking or starvation.</p>
+  <div id="alerts-list" class="alerts"></div>
+</aside>
+
+<script src="vendor/uplot/uPlot.iife.min.js"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
