@@ -1,0 +1,17 @@
+{
+  "feature_names": [
+    "cycle_time_z",
+    "queue_pressure",
+    "blocked_fraction",
+    "starved_fraction",
+    "upstream_risk_ewma"
+  ],
+  "weights": [
+    0.8170257749433137,
+    1.9104387473925148,
+    0.7090251220270717,
+    0.0,
+    0.017944069851318363
+  ],
+  "bias": -6.8460404889169855
+}

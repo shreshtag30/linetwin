@@ -15,7 +15,7 @@ the Working Prototype deliverable. **164 tests passing, CI green on Ubuntu + Win
 git clone <this-repo> && cd linetwin
 uv sync --all-extras
 uv run python tools/generate_training_data.py   # simulates ~5 configs of labeled data; a few seconds, no network
-uv run python tools/train_station_risk.py       # trains Model B (monotone XGBoost + isotonic calibration)
+uv run python tools/train_station_risk.py       # trains Model B (monotone logistic regression + Platt calibration)
 uv run python tools/run_server.py
 ```
 

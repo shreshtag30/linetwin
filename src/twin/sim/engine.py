@@ -280,8 +280,8 @@ class Engine:
 
     def _update_risk_scores(self) -> None:
         """Model B at ~1Hz (RISK_SCORE_HZ), regardless of tick rate. Called
-        directly, not via `asyncio.to_thread`: a 5-feature XGBoost + isotonic
-        predict is a microsecond-scale operation, where `to_thread`'s own
+        directly, not via `asyncio.to_thread`: a 5-feature logistic regression
+        + Platt calibration predict is a microsecond-scale operation, where `to_thread`'s own
         dispatch overhead would dominate and thread offload would be the
         wrong call -- see engine.py's `diagnose()` call above for the
         opposite case (Phase 7), where offloading was necessary because that

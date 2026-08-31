@@ -288,7 +288,7 @@ async def test_a_slow_diagnose_does_not_block_the_event_loop(monkeypatch) -> Non
 async def test_risk_scores_populate_at_the_configured_cadence() -> None:
     from twin.risk.scorer import MODELS_DIR
 
-    if not (MODELS_DIR / "station_risk_booster.json").exists():
+    if not (MODELS_DIR / "station_risk_model.json").exists():
         pytest.skip("ml/models/ not populated -- run tools/train_station_risk.py first")
 
     engine = Engine(SCENARIO, seed=1)

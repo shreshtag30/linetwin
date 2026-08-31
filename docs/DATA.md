@@ -168,3 +168,48 @@ second-highest of the five), but SHAP importance on the trained model ranks it n
 × typical-value is what determines a feature's real influence on the logit, not the weight alone.
 This is a property of the label-generating design (the `WEIGHTS` table conflates a coefficient with
 real-world influence), not a bug in the model or the feature-extraction code.
+
+---
+
+## Second addendum: XGBoost was not the right model here — switched to logistic regression
+
+**The one comparison the first audit didn't make.** The isotonic-collapse fix above (fitting the
+calibrator on train+calib) recovered XGBoost to 89.4% of the ceiling. That looked like the end of the
+story until a follow-up audit ran the one comparison missing from the "things tried" list: a plain
+logistic regression against the identical held-out config E.
+
+**Measured**: non-negative-constrained (monotone) logistic regression reaches **PR-AUC 0.0645 — 100.6%
+of the ceiling** (0.0641), a **+13.4% relative improvement over XGBoost's 89.4%**, and a genuine
+**+62.3% lift over the single-feature baseline** (vs. XGBoost's honest-but-modest 44.2%). This is not
+a coincidence: `oracle_risk = sigmoid(0.9·cycle_time_z + 2.6·queue_pressure + 2.2·blocked_fraction +
+1.1·starved_fraction + 1.8·upstream_risk_ewma + bias)` — the label function IS logistic regression's
+exact functional form. A tree ensemble has to *approximate* a smooth global linear relationship with
+axis-aligned splits; a correctly-specified linear model doesn't have to approximate it, especially
+against only ~700 positive training rows. **Caveat stated plainly**: this result is partly an artifact
+of the label being linear by construction (see "Known limitations" above) — it is not evidence that
+logistic regression would beat a tree ensemble against a real, non-synthetic defect distribution with
+genuine nonlinear interactions. Reported honestly either way, per this project's own discipline.
+
+**Checked directly, not assumed**: unconstrained logistic regression fits a **negative** coefficient on
+`starved_fraction` (−0.53), violating the monotone guarantee this project treats as non-negotiable.
+Refit with weights constrained to `≥0` (`scipy.optimize.minimize`, L-BFGS-B) — `starved_fraction`'s
+weight goes to exactly 0.0 rather than negative, at a cost of 0.0001 PR-AUC (0.0645 vs. 0.0646
+unconstrained) to buy back the hard guarantee.
+
+**Calibration switched from isotonic to Platt (a 1-D logistic regression on the raw logit)**, proven
+rather than assumed to be exactly rank-preserving: composing two monotone sigmoid-shaped functions
+cannot change rank order, so Platt calibration is PR-AUC/ROC-AUC-neutral by construction. Isotonic,
+even refit on train+calib (182,776 rows), still cost ~11.6% relative PR-AUC against the new logistic
+model specifically — the earlier fix happened to fully recover XGBoost's PR-AUC, but that turned out to
+be specific to XGBoost's score distribution, not a general property of isotonic regression at this
+sample size. **A real implementation bug was found and fixed while building this**: Platt scaling is
+defined on the raw decision function (the pre-sigmoid logit), not an already-squashed probability —
+fitting it on the sigmoid output instead gave the 1-D calibrator's own regularization almost nothing to
+push against, collapsing every calibrated probability into a ~0.0047–0.0048 band and degenerating MCC-
+threshold tuning to flag-nothing (precision=recall=0). Fixed by calibrating on the logit directly.
+
+**Artifacts**: `station_risk_booster.json` (an XGBoost tree dump) is retired; `station_risk_model.json`
+now holds the five weights and bias as plain, human-readable JSON — the file *is* the model, not a
+serialized footprint of one. Driver contributions (`RiskDriver` in the UI) are now computed exactly as
+`weight × feature_value` — the literal decomposition of a linear model's logit — rather than via
+TreeSHAP, at zero runtime dependency either way.

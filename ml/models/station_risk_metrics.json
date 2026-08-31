@@ -1,27 +1,36 @@
 {
   "evaluated_on": "config E (UNSEEN)",
   "model": {
-    "pr_auc": 0.05730003430875833,
+    "model_type": "logistic_regression_monotone_constrained",
+    "calibration_method": "platt_sigmoid",
+    "pr_auc": 0.06447433454439234,
     "no_skill_pr_auc": 0.008286242121277983,
-    "pr_auc_over_no_skill_x": 6.9150808617599235,
+    "pr_auc_over_no_skill_x": 7.780889527573748,
     "ceiling_pr_auc": 0.06409302249953028,
-    "pr_auc_over_ceiling_pct": 89.4013608254756,
-    "roc_auc": 0.8415212223742671,
-    "mcc_at_threshold": 0.08828475494846078,
+    "pr_auc_over_ceiling_pct": 100.59493534552043,
+    "roc_auc": 0.839092183305841,
+    "mcc_at_threshold": 0.09546182029419618,
     "threshold": 0.08,
-    "precision_at_threshold": 0.11794871794871795,
-    "recall_at_threshold": 0.07540983606557378,
-    "f1_at_threshold": 0.092,
+    "precision_at_threshold": 0.14685314685314685,
+    "recall_at_threshold": 0.06885245901639345,
+    "f1_at_threshold": 0.09375,
     "confusion_matrix_at_threshold": {
-      "true_negative": 36331,
-      "false_positive": 172,
-      "false_negative": 282,
-      "true_positive": 23
+      "true_negative": 36381,
+      "false_positive": 122,
+      "false_negative": 284,
+      "true_positive": 21
     },
-    "flag_rate_at_threshold": 0.005297761356226907
+    "flag_rate_at_threshold": 0.003885024994566399
   },
   "single_feature_baseline_cycle_time_z": {
     "pr_auc": 0.0397258671943747
   },
-  "lift_over_baseline_pct": 44.23859906794478
+  "lift_over_baseline_pct": 62.2981173171774,
+  "previous_model_for_comparison": {
+    "model_type": "xgboost_monotone_constrained",
+    "calibration_method": "isotonic_on_train_plus_calib",
+    "note": "superseded -- see docs/DATA.md addendum for the full comparison",
+    "pr_auc": 0.05730003430875833,
+    "pr_auc_over_ceiling_pct": 89.4013608254756
+  }
 }
