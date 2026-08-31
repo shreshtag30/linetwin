@@ -373,12 +373,20 @@ code {
 .fm-node:hover .fm-ct { color: var(--ink-2); }
 
 /* State and instrumentation are independent facts, so they use independent
-   channels: hue for state, dashed-versus-solid for whether a sensor exists. */
-.fm-node[data-state="working"] .fm-circle { border-color: var(--green);  color: var(--green); }
-.fm-node[data-state="starved"] .fm-circle { border-color: var(--blue);   color: var(--blue); }
-.fm-node[data-state="blocked"] .fm-circle { border-color: var(--orange); color: var(--orange); }
-.fm-node[data-state="down"]    .fm-circle { border-color: var(--red);    color: var(--red); }
+   channels: hue for state, dashed-versus-solid for whether a sensor exists.
+   Each state also pulses gently at its own colour -- a live, "still running"
+   read at a glance across 30 stations, the same idea as the connection lamp's
+   own `beat` animation, just per-station and per-state. */
+.fm-node[data-state="working"] .fm-circle { border-color: var(--green);  color: var(--green); animation: fm-blink-green 1.8s ease-in-out infinite; }
+.fm-node[data-state="starved"] .fm-circle { border-color: var(--blue);   color: var(--blue); animation: fm-blink-blue 1.8s ease-in-out infinite; }
+.fm-node[data-state="blocked"] .fm-circle { border-color: var(--orange); color: var(--orange); animation: fm-blink-orange 1.8s ease-in-out infinite; }
+.fm-node[data-state="down"]    .fm-circle { border-color: var(--red);    color: var(--red); animation: fm-blink-red 1.8s ease-in-out infinite; }
 .fm-node.is-dark .fm-circle { border-style: dashed; }
+
+@keyframes fm-blink-green  { 0%,100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 4px var(--green-tint); } }
+@keyframes fm-blink-blue   { 0%,100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 4px var(--blue-tint); } }
+@keyframes fm-blink-orange { 0%,100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 4px var(--orange-tint); } }
+@keyframes fm-blink-red    { 0%,100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 4px var(--red-tint); } }
 
 /* A station over the model's own decision threshold gets one dot. Not a
    colour change -- state already owns hue, and overloading it would make
@@ -409,50 +417,11 @@ code {
 
 .fm-node.is-selected .fm-circle { box-shadow: 0 0 0 3px var(--purple-tint); }
 
-/* ---- The conveyor between two stations -------------------------------
-   This is the real buffer: the DOWNSTREAM station's in-buffer occupancy.
-   It is the most informative element on the page, because a constraint has
-   a readable signature -- buffers full on its upstream side, empty on its
-   downstream side. Marching dashes run only while the consuming station is
-   actually working, so a stalled line looks stalled. */
-
-.fm-link {
-  position: absolute; z-index: 1;
-  top: 21px; transform: translateY(-50%);
-  left: calc(50% + 21px); width: calc(100% - 42px); height: 7px;
-  border-radius: 4px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  overflow: hidden;
-}
-.fm-link-fill {
-  display: block; height: 100%; width: 0;
-  background: var(--ink-3); border-radius: 3px;
-  transition: width .3s ease, background-color .2s ease;
-}
-/* A full buffer is why the station behind it is about to block. */
-.fm-link[data-buffer="full"]  { border-color: var(--orange); }
-.fm-link[data-buffer="full"] .fm-link-fill { background: var(--orange); }
-.fm-link[data-buffer="empty"] { border-color: var(--line); }
-
-.fm-link.is-flowing::after {
-  content: ""; position: absolute; inset: 0;
-  background-image: repeating-linear-gradient(
-    90deg, transparent 0 5px, rgba(128,128,128,.55) 5px 8px);
-  background-size: 13px 100%;
-  animation: march .85s linear infinite;
-}
-@keyframes march { from { background-position-x: 0; } to { background-position-x: 13px; } }
-
-.fm-node.is-last .fm-link { display: none; }
-
 @media (max-width: 1100px) {
   .fm-row { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .fm-node:nth-child(6n) .fm-link { display: none; }
 }
 @media (max-width: 560px) {
   .fm-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .fm-node:nth-child(4n) .fm-link { display: none; }
   .fm-ct { display: none; }
 }
 
@@ -825,10 +794,3 @@ body.stream-killed .canvas { opacity: .4; filter: saturate(.12); pointer-events:
   color: var(--ink-3); font-size: 10px; margin-left: 6px;
 }
 
-/* Legend swatch for the conveyor, drawn the same way the real one is. */
-.sw-buf {
-  width: 26px; height: 7px; border-radius: 4px; flex: none;
-  background: var(--surface-2); border: 1px solid var(--line);
-  display: block; overflow: hidden;
-}
-.sw-buf > i { display: block; width: 60%; height: 100%; background: var(--ink-3); }

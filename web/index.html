@@ -19,7 +19,7 @@
   <!-- v= is a hand-bumped cache-buster. StaticFiles has no build step and no
        content-hashed filenames, so without it a browser cache can serve stale
        JS after a deploy indefinitely. -->
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 
@@ -126,7 +126,6 @@
             <span class="lg"><i class="sw" data-state="blocked"></i>Blocked</span>
             <span class="lg"><i class="sw" data-state="down"></i>Down</span>
             <span class="lg"><i class="sw sw-dark"></i>No sensor</span>
-            <span class="lg"><i class="sw-buf"><i></i></i>Buffer between stations &mdash; fills before a constraint, empties after it</span>
           </div>
 
           <div id="floor-map" class="floor-map"></div>
@@ -481,6 +480,6 @@
 </aside>
 
 <script src="vendor/uplot/uPlot.iife.min.js"></script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

@@ -138,6 +138,7 @@ function connect() {
     fmBuilt = false;
     fmNodes.clear();
     selectedFloorStation = null;
+    cycleHistory.clear();
     renderFrequency();
     renderTimeline();
 
@@ -349,6 +350,32 @@ function renderConstraintEvidence(snap) {
 
 let selectedFloorStation = null;
 
+// A single last_cycle_time_s reading can be a genuine, rare long draw that
+// just hasn't been overwritten yet (the field only updates when THAT
+// station completes another unit) -- showing it raw and alone looks like a
+// broken number even though it's real. Smoothed here over the last few
+// distinct completions per station, for display only; the raw value is
+// still what's sent over the wire and used everywhere else (alerts,
+// narration, risk scoring all read the real field, unsmoothed).
+const CYCLE_SMOOTH_N = 5;
+const cycleHistory = new Map(); // station_id -> recent distinct observed values
+
+function pushCycleSample(stationId, value) {
+  if (value == null) return;
+  const hist = cycleHistory.get(stationId) || [];
+  if (hist.length === 0 || hist[hist.length - 1] !== value) {
+    hist.push(value);
+    if (hist.length > CYCLE_SMOOTH_N) hist.shift();
+    cycleHistory.set(stationId, hist);
+  }
+}
+
+function smoothedCycleTime(stationId) {
+  const hist = cycleHistory.get(stationId);
+  if (!hist || hist.length === 0) return null;
+  return hist.reduce((a, b) => a + b, 0) / hist.length;
+}
+
 /* ---------------------------------------------------------------------
  * The line.
  *
@@ -416,8 +443,7 @@ function buildFloorMap(stations) {
       node.className = "fm-node" + (isLast ? " is-last" : "");
       node.innerHTML =
         `<span class="fm-circle">${st.station_id.replace("S", "")}</span>` +
-        `<span class="fm-ct">–</span>` +
-        (isLast ? "" : `<span class="fm-link"><span class="fm-link-fill"></span></span>`);
+        `<span class="fm-ct">–</span>`;
 
       node.addEventListener("click", () => {
         selectedFloorStation = st.station_id;
@@ -430,8 +456,6 @@ function buildFloorMap(stations) {
       fmNodes.set(st.station_id, {
         node,
         ct: node.querySelector(".fm-ct"),
-        link: node.querySelector(".fm-link"),
-        fill: node.querySelector(".fm-link-fill"),
       });
     });
 
@@ -446,10 +470,10 @@ function updateFloorMap(stations, bottleneck) {
   const bottleneckId = bottleneck ? bottleneck.station_id : null;
   const byId = new Map(stations.map((s) => [s.station_id, s]));
 
-  stations.forEach((st, idx) => {
+  stations.forEach((st) => {
     const refs = fmNodes.get(st.station_id);
     if (!refs) return;
-    const { node, ct, link, fill } = refs;
+    const { node, ct } = refs;
 
     const displayState = ["down", "repair", "setup"].includes(st.state) ? "down" : st.state;
     node.dataset.state = displayState;
@@ -458,24 +482,10 @@ function updateFloorMap(stations, bottleneck) {
     node.classList.toggle("is-selected", st.station_id === selectedFloorStation);
 
     const v = st.cycle_time_s.value;
-    const ctText = v != null ? `${v.toFixed(0)}s` : "–";
+    pushCycleSample(st.station_id, v);
+    const displayV = smoothedCycleTime(st.station_id);
+    const ctText = displayV != null ? `${displayV.toFixed(0)}s` : "–";
     if (ct.textContent !== ctText) ct.textContent = ctText;
-
-    // The buffer this station feeds INTO is the next station's in-buffer.
-    const next = stations[idx + 1];
-    if (link && next && next.zone === st.zone) {
-      const cap = next.buffer_capacity || 1;
-      const occ = Math.max(0, Math.min(1, next.queue_depth / cap));
-      fill.style.width = `${(occ * 100).toFixed(0)}%`;
-      link.dataset.buffer = occ >= 0.999 ? "full" : occ <= 0.001 ? "empty" : "part";
-      // Dashes march only while the consumer is actually working, so a
-      // stalled line looks stalled instead of looping an idle animation.
-      link.classList.toggle("is-flowing", next.state === "working");
-      link.title = `buffer ${next.queue_depth}/${cap} into ${next.station_id}`;
-    } else if (link) {
-      link.dataset.buffer = "empty";
-      link.classList.remove("is-flowing");
-    }
 
     const risk = st.defect_risk ? st.defect_risk.value : null;
     node.classList.toggle(
@@ -486,7 +496,10 @@ function updateFloorMap(stations, bottleneck) {
     const NL = String.fromCharCode(10);
     node.title = [
       `${st.station_id} · ${st.state}`,
-      `cycle ${v != null ? v.toFixed(1) + "s" : "no reading"} · queue ${st.queue_depth}/${st.buffer_capacity}`,
+      // The circle shows a rolling average of the last few completions; the
+      // most recent single reading (which can be a genuine, rare long draw)
+      // is here on hover instead, so neither view hides the other.
+      `last reading ${v != null ? v.toFixed(1) + "s" : "no reading"} · queue ${st.queue_depth}/${st.buffer_capacity}`,
       `${st.units_completed} units completed`,
       st.instrumented ? "instrumented" : "no sensor — cycle time inferred from neighbours",
       st.station_id === bottleneckId ? "current constraint" : "",
@@ -502,7 +515,9 @@ function updateFloorMap(stations, bottleneck) {
 function renderStationDetailBar(st) {
   $("station-detail-bar").querySelector("h3").textContent =
     `${st.station_id} · ${ZONE_LABEL[st.zone] || st.zone}`;
-  $("sd-cycle").textContent = st.cycle_time_s.value != null ? `${st.cycle_time_s.value.toFixed(1)} s` : "—";
+  // Same rolling average as the floor-map circle, so the two views agree.
+  const avgCycle = smoothedCycleTime(st.station_id);
+  $("sd-cycle").textContent = avgCycle != null ? `${avgCycle.toFixed(1)} s` : "—";
   $("sd-queue").textContent = `${st.queue_depth} / ${st.buffer_capacity}`;
   $("sd-state").textContent = st.state;
   $("sd-source").textContent = st.instrumented ? "observed" : "inferred";
