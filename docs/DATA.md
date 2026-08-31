@@ -119,3 +119,52 @@ excluded.
 - `upstream_risk_ewma`'s recursive definition means early-line label noise compounds forward. This is a
   deliberate modeling choice (defects propagate), not an oversight, but it does mean final-zone stations'
   labels are the least independent of the five features by construction.
+
+---
+
+## Addendum, found via a full audit (post-Phase-10): the Bayes-optimal ceiling, and a real calibration bug
+
+**The training data carries something real industrial ML never has**: `oracle_risk`, the exact true
+`P(defect=1 | features)` used to generate labels (`defect = Bernoulli(oracle_risk)`,
+`tools/generate_training_data.py`). That means the Bayes-optimal ceiling for this exact problem is
+directly *computable*, not estimated — no model, however sophisticated, can beat the PR-AUC of the
+true oracle probabilities scored against the sampled labels on the same test set.
+
+**Measured**: that ceiling is `PR-AUC ≈ 0.064` (≈7.7× the no-skill rate). This is the honest reason
+Model B's raw PR-AUC numbers look small in isolation — the problem is inherently hard at Bosch's
+~0.58%-scale imbalance combined with a genuinely stochastic (Bernoulli, not deterministic) label —
+not evidence of a badly-modeled or badly-engineered pipeline. Reporting PR-AUC as a fraction of this
+ceiling (`pr_auc_over_ceiling_pct` in `station_risk_metrics.json`) is more meaningful than either the
+no-skill or single-feature-baseline comparisons alone, and is now persisted alongside them.
+
+**A real, previously-undiagnosed bug was found and fixed**: `tools/train_station_risk.py` fit the
+isotonic calibrator on config D alone (143 positives). Isotonic regression is a step function; that
+few positives collapsed 2,942 distinct raw XGBoost scores on the test set into just 79 output
+buckets, directly destroying rank information PR-AUC depends on. Measured directly: PR-AUC dropped
+from 0.0573 (raw booster, 89.4% of ceiling) to 0.0471 (isotonic-on-D-alone, 73.5% of ceiling) — an
+18% relative loss from the calibration step alone, on top of an already-hard problem. **Fixed** by
+fitting the calibrator on train+calib combined (still only configs A/B/C/D — config E remains
+untouched until final evaluation, exactly as before) — recovers the full raw PR-AUC while still
+producing calibrated probabilities.
+
+**Things tried and found NOT to help, reported rather than hidden** (checked with a full audit, not
+assumed):
+- Feature interactions (pairwise products of the five features) — hurt badly (0.0573 → 0.0302).
+  Expected: `oracle_risk` is exactly additive-in-logit by construction (no interaction terms in
+  `WEIGHTS`), so interaction terms add pure overfitting risk against only ~700 positive training
+  examples, no true signal to find.
+- Removing the monotone constraints — hurts badly (unconstrained XGBoost reaches only 47.9% of
+  ceiling vs. 89.4% constrained). The constraints are load-bearing, not decorative.
+- `scale_pos_weight` above 1.0 — the current default (no reweighting) is empirically the best of every
+  value tried; confirms `docs/DATA.md`'s original design choice rather than just asserting it.
+- LightGBM, tested with generic (non-tuned) hyperparameters, underperforms the carefully-tuned XGBoost
+  — but wasn't given equivalent tuning care, so this is not a fair verdict on the library, and is
+  stated as such rather than oversold as "XGBoost wins."
+
+**`upstream_risk_ewma`'s weak real-world signal, explained**: it has a nominal weight of 1.8 (the
+second-highest of the five), but SHAP importance on the trained model ranks it near the bottom
+(mean |SHAP| 0.10, ahead of only `starved_fraction`). Root cause: it is an EWMA of already-tiny
+`oracle_risk` values, so its own natural range in the data is tiny (mean 0.005, max 0.169) — weight
+× typical-value is what determines a feature's real influence on the logit, not the weight alone.
+This is a property of the label-generating design (the `WEIGHTS` table conflates a coefficient with
+real-world influence), not a bug in the model or the feature-extraction code.

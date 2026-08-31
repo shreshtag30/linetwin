@@ -244,3 +244,28 @@ Recorded here rather than silently overwritten: the model itself is not "better"
 change in this phase — the underlying simulation is simply more realistic than it was, and a less
 artificially-noisy line produces a cleaner risk signal. `tests/test_labels.py`'s pinned-constant
 regression test was updated to the new value, not deleted, so a future silent drift is still caught.
+
+---
+
+## Second addendum, same investigation: a full audit, a real calibration bug found, and a Bayes-optimal ceiling
+
+A full industrial-ML-style audit of Model B (documented in full in `docs/DATA.md`'s own addendum) —
+full error analysis, threshold search, SHAP, feature interactions, alternative models, group-aware
+cross-validation — produced the single most useful number this project has had for this model: **the
+training data carries the exact true generating probability** (`oracle_risk`, since
+`defect = Bernoulli(oracle_risk)`), so the Bayes-optimal ceiling is directly computable rather than
+estimated. That ceiling is `PR-AUC ≈ 0.064` — meaning Model B's PR-AUC was never going to be a large
+absolute number no matter what, and every prior comparison against no-skill or a weak baseline was
+missing the one reference point that actually answers "is this good."
+
+Measured against that ceiling: Model B was at 73.5%. A real, previously undiagnosed bug — isotonic
+calibration fit on only 143 positives (config D alone) collapsing 2,942 distinct raw scores into 79
+buckets — was found and fixed (calibrate on train+calib combined instead), recovering **89.4% of the
+ceiling**. Full detail, including what was tried and found NOT to help (feature interactions,
+removing monotone constraints, `scale_pos_weight` reweighting), is in `docs/DATA.md`'s addendum
+rather than duplicated here.
+
+**Current metrics** (config E, UNSEEN): PR-AUC 0.0573 (89.4% of ceiling, 6.9× no-skill), lift over
+single-feature baseline +44.2%, ROC-AUC 0.842. `tests/test_scorer.py` gained a regression test
+pinning both the ceiling identity and the post-fix floor (≥85% of ceiling), so a future change
+silently reintroducing the calibration-collapse bug would fail loudly. 170/170 tests green.

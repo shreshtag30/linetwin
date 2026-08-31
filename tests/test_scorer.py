@@ -123,3 +123,40 @@ def test_metrics_report_the_operating_point_not_just_ranking_metrics() -> None:
     assert metrics["pr_auc_over_no_skill_x"] == pytest.approx(
         metrics["pr_auc"] / metrics["no_skill_pr_auc"], abs=1e-6
     )
+
+
+def test_pr_auc_reports_the_bayes_optimal_ceiling() -> None:
+    """Real gap found via a full audit: PR-AUC was reported against a
+    no-skill baseline and a weak single-feature model, but never against the
+    one reference point unique to this project -- the training data carries
+    `oracle_risk`, the EXACT true P(defect=1 | features) used to generate
+    labels (`defect = Bernoulli(oracle_risk)`, labels.py). No model can ever
+    beat the PR-AUC of the true oracle probabilities on this exact data, so
+    "PR-AUC over ceiling" is the most honest number available -- and it
+    reveals the ceiling itself is low (~0.06), which is the actual reason
+    Model B's raw PR-AUC looks small in isolation: the problem is inherently
+    hard at this imbalance and label-noise level, not badly modeled.
+    """
+    metrics_path = MODELS_DIR / "station_risk_metrics.json"
+    if not metrics_path.exists():
+        pytest.skip(f"{metrics_path} not populated -- run tools/train_station_risk.py first")
+
+    metrics = json.loads(metrics_path.read_text())["model"]
+    for key in ("ceiling_pr_auc", "pr_auc_over_ceiling_pct"):
+        assert key in metrics, f"missing {key}"
+
+    # The model can approach but never exceed the true oracle's own PR-AUC.
+    assert metrics["pr_auc"] <= metrics["ceiling_pr_auc"] + 1e-6
+    assert 0.0 <= metrics["pr_auc_over_ceiling_pct"] <= 100.0 + 1e-6
+    assert metrics["pr_auc_over_ceiling_pct"] == pytest.approx(
+        metrics["pr_auc"] / metrics["ceiling_pr_auc"] * 100, abs=1e-4
+    )
+    # Found via the same audit: fitting isotonic calibration on config D
+    # alone (143 positives) collapsed 2,942 distinct raw scores into 79
+    # buckets, dropping PR-AUC from 89.4% to 73.5% of ceiling. Fixed by
+    # calibrating on train+calib combined. Pin the recovered floor so a
+    # future change can't silently reintroduce the calibration-collapse bug.
+    assert metrics["pr_auc_over_ceiling_pct"] >= 85.0, (
+        "PR-AUC dropped well below the post-fix floor -- check whether "
+        "the isotonic calibrator regressed to fitting on too little data"
+    )
