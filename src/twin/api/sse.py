@@ -58,13 +58,10 @@ def make_stream_route(engine: Engine):
     """
 
     async def stream() -> AsyncIterator[ServerSentEvent]:
-        if engine.run_meta is not None:
-            yield ServerSentEvent(
-                event="run_meta",
-                raw_data=engine.run_meta.model_dump_json(),
-            )
-
         last_seq = -1
+        last_generation = engine.bus.generation
+        announced = False
+
         # A client disconnect surfaces as this generator being cancelled by
         # the ASGI layer (GeneratorExit/CancelledError), not as a value to
         # poll for. Letting it propagate naturally out of this loop -- rather
@@ -72,7 +69,27 @@ def make_stream_route(engine: Engine):
         # behavior: FastAPI/Starlette already treat that as a routine,
         # silent stream closure.
         while True:
-            snapshot = await engine.bus.wait_for_next(last_seq)
+            snapshot = await engine.bus.wait_for_next(last_seq, last_generation)
+
+            # A restart re-seeds the seq counter, which bumps bus.generation.
+            # Drop our seq gate so we don't keep waiting for a seq the fresh
+            # run will not reach for ~100s, and re-announce run_meta so an
+            # already-open client resyncs (its run_meta handler resets
+            # history/charts). This is why the dashboard's Restart button
+            # needs no reconnect.
+            restarted = engine.bus.generation != last_generation
+            if restarted:
+                last_generation = engine.bus.generation
+                last_seq = -1
+
+            if not announced or restarted:
+                announced = True
+                if engine.run_meta is not None:
+                    yield ServerSentEvent(
+                        event="run_meta",
+                        raw_data=engine.run_meta.model_dump_json(),
+                    )
+
             last_seq = snapshot.seq
             yield ServerSentEvent(
                 event="snapshot",

@@ -66,21 +66,42 @@ class ConflationBus:
     def __init__(self) -> None:
         self._condition = asyncio.Condition()
         self.latest: Snapshot | None = None
+        # Bumped whenever a published snapshot's seq is NOT greater than the
+        # previous one -- which only happens when the engine restarts and its
+        # seq counter resets to 0.
+        #
+        # REAL BUG, found via the dashboard's Restart button freezing the UI:
+        # a consumer gating purely on `seq > last_seq` blocks forever after a
+        # restart, because the fresh run's seq climbs from 1 and will not pass
+        # the pre-restart value for ~100s. Passing the last-seen `generation`
+        # lets `wait_for_next` also wake on "the run restarted under you".
+        self.generation = 0
 
     async def publish(self, snapshot: Snapshot) -> None:
         async with self._condition:
+            if self.latest is not None and snapshot.seq <= self.latest.seq:
+                self.generation += 1
             self.latest = snapshot
             self._condition.notify_all()
 
-    async def wait_for_next(self, last_seq: int) -> Snapshot:
+    async def wait_for_next(self, last_seq: int, last_generation: int | None = None) -> Snapshot:
         """Blocks until a snapshot with seq > last_seq is available, then
         returns it. Each caller tracks its own `last_seq`, so multiple
         independent SSE consumers can each pull at their own pace without
         interfering with one another or with the tick loop.
+
+        Pass `last_generation` (the `bus.generation` value seen alongside the
+        previous snapshot) to also wake when the engine has restarted since --
+        the seq counter reset, so `seq > last_seq` may never come true again.
+        Omitting it keeps the original seq-only behavior.
         """
         async with self._condition:
             await self._condition.wait_for(
-                lambda: self.latest is not None and self.latest.seq > last_seq
+                lambda: self.latest is not None
+                and (
+                    self.latest.seq > last_seq
+                    or (last_generation is not None and self.generation != last_generation)
+                )
             )
             assert self.latest is not None
             return self.latest
@@ -451,8 +472,8 @@ class Engine:
         # `asyncio.to_thread` is the right tool here specifically because
         # this computation's cost is unbounded and can genuinely reach
         # multiple seconds -- unlike Phase 8's live risk-scoring inference
-        # (a ~microsecond XGBoost predict, where to_thread's own dispatch
-        # overhead would dominate and thread offload is the wrong call).
+        # (a ~microsecond logistic-regression predict, where to_thread's own
+        # dispatch overhead would dominate and thread offload is the wrong call).
         # Offloading here does not make the computation itself faster; it
         # keeps the event loop -- and therefore every other request --
         # responsive while it runs.

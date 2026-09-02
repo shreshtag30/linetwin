@@ -210,6 +210,36 @@ class TestConflationBus:
         assert results == [1, 1, 1]
 
     @pytest.mark.asyncio
+    async def test_wait_for_next_wakes_on_a_restart_seq_regression(self) -> None:
+        """Regression test for the Restart-button freeze: a restart resets seq
+        to 0, so a consumer gating only on `seq > last_seq` would block until
+        the fresh run climbed back past the old value (~100s). Passing the
+        last-seen `generation` must make it wake on the restart instead.
+        """
+        bus = ConflationBus()
+        from twin.contracts import Snapshot
+
+        await bus.publish(Snapshot(seq=900, tick=900, sim_time_s=900 * SIM_DT, stations=[]))
+        gen_before = bus.generation
+
+        async def restarter():
+            await asyncio.sleep(0.05)
+            await bus.publish(Snapshot(seq=1, tick=1, sim_time_s=SIM_DT, stations=[]))
+
+        task = asyncio.create_task(restarter())
+        snap = await asyncio.wait_for(
+            bus.wait_for_next(last_seq=900, last_generation=gen_before), timeout=1.0
+        )
+        await task
+        assert snap.seq == 1
+        assert bus.generation != gen_before
+
+        # Without the generation argument the old seq-only behavior still holds.
+        await bus.publish(Snapshot(seq=2, tick=2, sim_time_s=2 * SIM_DT, stations=[]))
+        snap2 = await asyncio.wait_for(bus.wait_for_next(last_seq=1), timeout=1.0)
+        assert snap2.seq == 2
+
+    @pytest.mark.asyncio
     async def test_a_slow_waiter_never_blocks_publish(self) -> None:
         """The whole point of a conflation bus: publish must never await a
         consumer. A waiter that never calls wait_for_next at all must not

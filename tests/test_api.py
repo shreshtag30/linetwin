@@ -191,6 +191,31 @@ async def test_risk_threshold_matches_the_loaded_scorer(client: httpx.AsyncClien
 
 
 @pytest.mark.asyncio
+async def test_model_metrics_matches_the_loaded_scorer(client: httpx.AsyncClient) -> None:
+    """Powers the Method/Leadership tabs' Model B figures -- they must be the
+    numbers tools/train_station_risk.py actually measured, not hardcoded HTML
+    that goes stale on a retrain (the exact drift this endpoint exists to
+    prevent). `null` iff Model B isn't loaded, same as risk_threshold.
+    """
+    engine = client.engine  # type: ignore[attr-defined]
+    r = await client.get("/api/twin/model_metrics")
+    assert r.status_code == 200
+    body = r.json()
+
+    if engine._risk_scorer is None:
+        assert body["metrics"] is None
+        return
+
+    m = body["metrics"]
+    for key in ("pr_auc", "roc_auc", "pr_auc_over_no_skill_x", "pr_auc_over_ceiling_pct"):
+        assert key in m, f"missing {key}"
+    assert 0.0 <= m["pr_auc"] <= 1.0
+    assert 0.0 <= m["roc_auc"] <= 1.0
+    assert m["pr_auc_over_no_skill_x"] > 0
+    assert isinstance(body["lift_over_baseline_pct"], (int, float))
+
+
+@pytest.mark.asyncio
 async def test_restart_accepts_and_engine_eventually_reflects_it(
     client: httpx.AsyncClient,
 ) -> None:
@@ -393,6 +418,58 @@ def test_sse_data_is_single_parse_json_not_double_encoded(live_server: str) -> N
                 )
                 assert "seq" in parsed
                 break
+
+
+def test_sse_stream_survives_a_restart_without_stalling(live_server: str) -> None:
+    """Regression test for the dashboard Restart button freezing the UI: a
+    restart resets the engine's seq counter, and the SSE stream used to gate
+    purely on `seq > last_seq` -- so an already-open stream would block for
+    ~100s waiting for a seq the fresh run would not reach. api/sse.py now
+    detects the reset (bus.generation) and re-announces run_meta on the new
+    run. This asserts the open stream keeps delivering fresh low-tick frames
+    across a restart, and re-announces run_meta rather than reconnecting.
+    """
+    import json
+
+    run_meta_count = 0
+    saw_fresh_run = False
+    restarted = False
+    frames_seen = 0
+    prev_tick = -1
+    current_event = None
+
+    with (
+        httpx.Client(timeout=15.0) as client,
+        client.stream("GET", f"{live_server}/api/twin/stream") as resp,
+    ):
+        for line in resp.iter_lines():
+            if line.startswith("event:"):
+                current_event = line.split(":", 1)[1].strip()
+                continue
+            if not line.startswith("data:"):
+                continue
+            if current_event == "run_meta":
+                run_meta_count += 1
+                continue
+            if current_event != "snapshot":
+                continue
+
+            tick = json.loads(line.split(":", 1)[1].strip())["tick"]
+            frames_seen += 1
+
+            if not restarted and frames_seen >= 8:
+                httpx.post(f"{live_server}/api/twin/restart")
+                restarted = True
+            elif restarted and tick < prev_tick:
+                # tick strictly decreased -- impossible within one run, so the
+                # open stream picked up the fresh run instead of hanging.
+                saw_fresh_run = True
+                break
+            prev_tick = tick
+
+    assert restarted
+    assert saw_fresh_run, "open stream stalled after restart instead of resyncing"
+    assert run_meta_count >= 2, "restart should re-announce run_meta on the same stream"
 
 
 def test_three_concurrent_clients_stay_in_sync(live_server: str) -> None:

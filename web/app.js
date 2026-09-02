@@ -639,7 +639,7 @@ function renderRiskExplain(station) {
   }
   const maxAbs = Math.max(...drivers.map((d) => Math.abs(d.contribution)), 0.001);
   // A bare "−0.98" under a heading that says "contributing factors" reads as
-  // a contradiction. Name the direction instead: a negative SHAP value on a
+  // a contradiction. Name the direction instead: a negative contribution on a
   // risk model lowers the score, and that is worth showing, not hiding.
   body.innerHTML = drivers.map((d) => {
     const width = (Math.abs(d.contribution) / maxAbs * 100).toFixed(0);
@@ -863,7 +863,13 @@ function renderStationCard(st, isBottleneck) {
   } else {
     tagLabel = ct.source;
   }
-  const sourceTag = `<span class="confidence-pill" data-source="${ct.source}">${tagLabel}</span>`;
+  // The pill COLOUR must follow missingness, not source: when the value isn't
+  // present, `ct.source` still defaults to "observed" (contracts.py), which
+  // would paint a green "measured" pill behind a label that says "missing" --
+  // the exact "estimate/absence presented as a measurement" failure the
+  // provenance tagging exists to prevent. A neutral swatch when absent.
+  const pillSource = ct.missingness === "present" ? ct.source : "absent";
+  const sourceTag = `<span class="confidence-pill" data-source="${pillSource}">${tagLabel}</span>`;
 
   card.innerHTML = `
     <div class="st-id">${st.station_id}</div>
@@ -1261,6 +1267,32 @@ async function loadRiskThreshold() {
   }
 }
 
+/* Model B's held-out evaluation figures, read live from
+ * /api/twin/model_metrics (which reads ml/models/station_risk_metrics.json)
+ * so the Method and Leadership tabs never show hardcoded numbers that go
+ * stale on a retrain. Fetched once at startup, same as loadRiskThreshold /
+ * loadEconomicsConfig. On any failure the static HTML values are left as-is.
+ */
+async function loadModelMetrics() {
+  try {
+    const resp = await fetch("/api/twin/model_metrics");
+    const body = await resp.json();
+    const m = body.metrics;
+    if (!m) return; // Model B not loaded -- keep the static fallbacks
+    const set = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+    set("mb-pr-auc", m.pr_auc.toFixed(3));
+    set("mb-no-skill-x", `${m.pr_auc_over_no_skill_x.toFixed(1)}×`);
+    set("mb-roc-auc", m.roc_auc.toFixed(3));
+    if (typeof body.lift_over_baseline_pct === "number") {
+      const lift = `+${body.lift_over_baseline_pct.toFixed(1)}%`;
+      set("mb-lift", lift);
+      set("ld-proof-lift", lift);
+    }
+  } catch {
+    /* leave the static HTML values in place */
+  }
+}
+
 function pushAlert(severity, title, detail, tick) {
   alerts.unshift({ severity, title, detail, tick });
   if (alerts.length > ALERTS_MAX) alerts.length = ALERTS_MAX;
@@ -1456,13 +1488,27 @@ function closeAlerts() {
 }
 
 async function restartEngine() {
+  // The open SSE stream now re-announces run_meta on the fresh run itself
+  // (api/sse.py detects the seq counter resetting), and the run_meta handler
+  // above already resets history, charts and rolling state -- so no
+  // reconnect is needed on a live stream.
+  //
+  // The previous version closed and reopened the EventSource here. That was a
+  // race: the new stream often connected BEFORE the engine's tick loop had
+  // processed the restart, so it latched onto the old run's about-to-reset
+  // seq counter and then blocked forever waiting for a seq the fresh run
+  // would not reach for ~100s -- the "Restart does nothing / freezes" bug.
+  if (killed) {
+    // Stream was explicitly killed -- there is nothing open to resync, so a
+    // reconnect is the only way to see the new run.
+    killed = false;
+    document.body.classList.remove("stream-killed");
+    $("proof-frozen").hidden = true;
+    $("btn-kill").disabled = false;
+    $("btn-resume").disabled = true;
+  }
   await fetch("/api/twin/restart", { method: "POST" });
-  // The engine only emits a fresh run_meta to a NEWLY opened stream
-  // connection (see api/sse.py) -- an already-open EventSource would just
-  // see tick counters drop back to 1 with no explicit "this is a new run"
-  // signal. Reconnecting here is what actually picks up the new run_meta.
-  if (es) es.close();
-  connect();
+  if (!es || es.readyState !== 1 /* OPEN */) connect();
 }
 
 $("ctl-mult").addEventListener("input", (e) => {
@@ -1508,5 +1554,6 @@ $("ld-budget").addEventListener("input", (e) => {
 
 loadEconomicsConfig();
 loadRiskThreshold();
+loadModelMetrics();
 fetchSensorPlacement();
 connect();

@@ -769,6 +769,9 @@ input[type="range"]::-moz-range-thumb {
 .confidence-pill[data-source="observed"] { background: var(--green-tint); color: var(--green); border-color: var(--green); }
 .confidence-pill[data-source="inferred"] { background: var(--blue-tint);  color: var(--blue);  border-color: var(--blue); }
 .confidence-pill[data-source="simulated"] { background: var(--surface-2); color: var(--ink-3); border-color: var(--line-2); }
+/* Value not present (missing / zero / not_applicable) -- neutral, never the
+   green "measured" swatch. app.js sets data-source="absent" in that case. */
+.confidence-pill[data-source="absent"] { background: var(--surface-2); color: var(--ink-3); border-color: var(--line-2); }
 
 /* ==========================================================================
    Footer + killed state

@@ -7,6 +7,7 @@ isolated Engine + app per test rather than sharing process-global state.
 from __future__ import annotations
 
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from twin.contracts import ControlAck, ControlCommand
 from twin.diagnostic.genealogy import list_defect_candidates, trace_genealogy
 from twin.economics import QC_LAG_UNITS, REWORK_COST_DELTA_USD
+from twin.risk.scorer import MODELS_DIR
 from twin.sim.engine import Engine
 
 from .sse import make_stream_route
@@ -81,7 +83,7 @@ def make_control_routes(engine: Engine) -> APIRouter:
         return {
             "accepted": True,
             "previous_run_id": previous_run_id,
-            "note": "reconnect to /api/twin/stream for the new run_meta",
+            "note": "an already-open /api/twin/stream re-announces run_meta on the new run",
         }
 
     @router.get("/healthz")
@@ -120,6 +122,29 @@ def make_control_routes(engine: Engine) -> APIRouter:
         # already treats an absent scorer as an honest omission, not an error.
         scorer = engine._risk_scorer
         return {"threshold": scorer.threshold if scorer is not None else None}
+
+    @router.get("/api/twin/model_metrics")
+    async def model_metrics() -> dict:
+        # Model B's held-out evaluation numbers (tools/train_station_risk.py
+        # writes station_risk_metrics.json), exposed so the Method/Leadership
+        # tabs render the model's ACTUAL measured performance instead of
+        # hardcoding figures that silently go stale on a retrain. Static
+        # per-process, not per-tick -- fetched once, same rationale as
+        # economics_config, so the frozen wire contract (contracts.py) is
+        # untouched. `null` when Model B is not loaded (ml/models/ not
+        # populated) or the metrics file is absent, matching how the rest of
+        # the payload treats an absent scorer as an honest omission.
+        metrics_path = MODELS_DIR / "station_risk_metrics.json"
+        if engine._risk_scorer is None or not metrics_path.exists():
+            return {"metrics": None}
+        raw = json.loads(metrics_path.read_text())
+        return {
+            "metrics": raw.get("model"),
+            "lift_over_baseline_pct": raw.get("lift_over_baseline_pct"),
+            "single_feature_baseline_cycle_time_z": raw.get(
+                "single_feature_baseline_cycle_time_z"
+            ),
+        }
 
     @router.get("/api/twin/genealogy/candidates")
     async def genealogy_candidates(limit: int = Query(default=10, ge=1, le=50)) -> dict:

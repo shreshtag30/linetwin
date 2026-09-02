@@ -5,7 +5,7 @@ validated against our own ground truth, defect-risk prediction with a stated hon
 and graph-based inference at sensor-poor stations.
 
 Built for the **Accenture Innovation Challenge 2026, Round 2, Problem Track 4 "DigitalTwin.ai"** as
-the Working Prototype deliverable. **164 tests passing, CI green on Ubuntu + Windows.**
+the Working Prototype deliverable. **172 tests passing, CI green on Ubuntu + Windows.**
 
 ---
 
@@ -28,8 +28,8 @@ and watch the constraint move on the line map, with the charts and alerts respon
 seconds. Then open Plant Manager for the rolling-horizon forecast, the shifting-bottleneck
 timeline, and per-unit defect genealogy.
 
-`uv run pytest -q` runs the full suite (164 passing, 4 skipped until you generate training data;
-~3 min). `uv run ruff check .` for lint.
+`uv run pytest -q` runs the full suite (172 passing once the two steps above have populated `ml/`;
+a few tests skip on a bare checkout until then; ~3 min). `uv run ruff check .` for lint.
 
 ---
 

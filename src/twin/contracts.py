@@ -219,8 +219,9 @@ class StationSnapshot(BaseModel):
     # Computed by a model FROM those measurements. The distinction is volunteered
     # in the payload, not buried in the README.
     defect_risk: TaggedValue | None = None
-    # Top-2 TreeSHAP contributors. ASSOCIATIVE, NOT CAUSAL -- the brief itself notes
-    # these causes are hard to isolate from data alone.
+    # Top-2 exact linear-model contributions (weight * feature value). ASSOCIATIVE,
+    # NOT CAUSAL -- the brief itself notes these causes are hard to isolate from
+    # data alone.
     risk_drivers: list[RiskDriver] = Field(default_factory=list)
     risk_updated_tick: int | None = None
 

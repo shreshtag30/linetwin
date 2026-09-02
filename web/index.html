@@ -19,7 +19,7 @@
   <!-- v= is a hand-bumped cache-buster. StaticFiles has no build step and no
        content-hashed filenames, so without it a browser cache can serve stale
        JS after a deploy indefinitely. -->
-  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
 
@@ -222,7 +222,7 @@
         <section class="card" id="panel-drivers">
           <header class="card-head">
             <h2 id="explain-title">Contributing factors</h2>
-            <span class="head-note">TreeSHAP</span>
+            <span class="head-note">exact linear contribution</span>
           </header>
           <div id="explain-body" class="explain-body">
             <p class="empty">Select a station.</p>
@@ -377,9 +377,9 @@
           <h2>Measured, not projected</h2>
         </header>
         <div class="proof-grid">
-          <div class="proof-cell"><span class="proof-n">164</span><span class="proof-t">tests passing, CI on Ubuntu and Windows</span></div>
+          <div class="proof-cell"><span class="proof-n">172</span><span class="proof-t">tests passing, CI on Ubuntu and Windows</span></div>
           <div class="proof-cell"><span class="proof-n">90.0%</span><span class="proof-t">detector top-1 across three engineered-bottleneck scenarios</span></div>
-          <div class="proof-cell"><span class="proof-n">+18.6%</span><span class="proof-t">Model B PR-AUC lift over best single feature, unseen config</span></div>
+          <div class="proof-cell"><span class="proof-n" id="ld-proof-lift">+62.3%</span><span class="proof-t">Model B PR-AUC lift over best single feature, unseen config</span></div>
           <div class="proof-cell"><span class="proof-n">22 / 30</span><span class="proof-t">stations wired; both graph identities hold numerically</span></div>
         </div>
       </section>
@@ -399,8 +399,8 @@
               A breakdown does not end an active period. Benchmarked over 30 scenario&times;seed trials:
               Busy Ratio 93.3%, Active Period 90.0%. Reported as measured, not ranked to flatter the
               deployed method.</li>
-            <li><b>Defect risk.</b> Monotone gradient boosting, isotonic-calibrated, reported at its own
-              tuned operating point.</li>
+            <li><b>Defect risk.</b> Monotone (non-negative-constrained) logistic regression,
+              Platt-calibrated, reported at its own MCC-tuned operating point.</li>
             <li><b>Sensor-gap inference.</b> Eight dark stations solved from a graph equation over their
               neighbours, tagged <i>inferred — N%</i> where N is an exact partition of unity.</li>
             <li><b>Rolling horizon.</b> Live state forked and fast-forwarded ~30 sim-minutes, once a second.</li>
@@ -426,10 +426,10 @@
           <span class="head-note">Line config E &mdash; never trained on</span>
         </header>
         <div class="metrics metrics-sm">
-          <div class="metric"><span class="m-label">PR-AUC</span><span class="m-value">0.047</span><span class="m-unit">vs 0.008 no-skill</span></div>
-          <div class="metric"><span class="m-label">Over no-skill</span><span class="m-value">5.7&times;</span><span class="m-unit">precision-recall</span></div>
-          <div class="metric"><span class="m-label">ROC-AUC</span><span class="m-value">0.841</span><span class="m-unit">ranking quality</span></div>
-          <div class="metric"><span class="m-label">Over baseline</span><span class="m-value">+18.6%</span><span class="m-unit">vs cycle_time_z alone</span></div>
+          <div class="metric"><span class="m-label">PR-AUC</span><span class="m-value" id="mb-pr-auc">0.064</span><span class="m-unit">vs 0.008 no-skill</span></div>
+          <div class="metric"><span class="m-label">Over no-skill</span><span class="m-value" id="mb-no-skill-x">7.8&times;</span><span class="m-unit">precision-recall</span></div>
+          <div class="metric"><span class="m-label">ROC-AUC</span><span class="m-value" id="mb-roc-auc">0.839</span><span class="m-unit">ranking quality</span></div>
+          <div class="metric"><span class="m-label">Over baseline</span><span class="m-value" id="mb-lift">+62.3%</span><span class="m-unit">vs cycle_time_z alone</span></div>
         </div>
         <p class="footnote">Small absolute numbers, published rather than a headline accuracy. Defects are rare —
           no-skill scores 0.008 PR-AUC here — so the honest comparison is against that floor and the best single
@@ -480,6 +480,6 @@
 </aside>
 
 <script src="vendor/uplot/uPlot.iife.min.js"></script>
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>
