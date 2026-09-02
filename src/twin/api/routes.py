@@ -7,6 +7,7 @@ isolated Engine + app per test rather than sharing process-global state.
 from __future__ import annotations
 
 import asyncio
+import csv
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -144,6 +145,35 @@ def make_control_routes(engine: Engine) -> APIRouter:
             "single_feature_baseline_cycle_time_z": raw.get(
                 "single_feature_baseline_cycle_time_z"
             ),
+        }
+
+    @router.get("/api/twin/degradation_curve")
+    async def degradation_curve() -> dict:
+        # The sensor-removal degradation experiment
+        # (tools/run_degradation_experiment.py), exposed so the Method tab can
+        # PLOT it rather than assert it. The dashboard previously claimed "it
+        # has a knee, and we plot it" while plotting nothing anywhere -- the
+        # data was only ever a CSV under docs/, which StaticFiles does not
+        # serve. Each row carries both arms: the graph layer's error and the
+        # prior-only baseline it has to beat.
+        curve_path = (
+            Path(__file__).resolve().parents[3] / "docs" / "phases" / "degradation_curve.csv"
+        )
+        if not curve_path.exists():
+            return {"points": None}
+        with curve_path.open(encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        return {
+            "points": [
+                {
+                    "coverage_pct": int(r["coverage_pct"]),
+                    "n_dark": int(r["n_dark"]),
+                    "graph_error": float(r["mean_relative_error"]),
+                    "prior_only_error": float(r["prior_only_mean_relative_error"]),
+                    "improvement_pct": float(r["improvement_over_prior_pct"]),
+                }
+                for r in rows
+            ]
         }
 
     @router.get("/api/twin/genealogy/candidates")

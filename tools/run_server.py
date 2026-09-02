@@ -26,10 +26,14 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--seed", type=int, default=None)
+    # `warning` suppresses uvicorn's per-request access log. tools/demo.py uses it
+    # so its own warm-up progress line is not shredded by a log line per poll;
+    # real errors still surface.
+    parser.add_argument("--log-level", default="info")
     args = parser.parse_args()
 
     app = create_app(args.scenario, seed=args.seed)
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
 
 
 if __name__ == "__main__":

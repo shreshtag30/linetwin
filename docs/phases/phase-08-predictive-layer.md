@@ -145,7 +145,28 @@ problem is the positive base rate, not just a single-feature comparison) and pre
 actual MCC-tuned operating threshold. Computed directly and now persisted in
 `ml/models/station_risk_metrics.json` by `tools/train_station_risk.py`:
 
-| Metric (config E, threshold 0.02) | Value |
+> **SUPERSEDED TWICE.** The table below is the Phase 8 XGBoost measurement at threshold 0.02 and no
+> longer describes anything shipped. It is kept because the *argument* is the point, but a reader
+> comparing it against `ml/models/station_risk_metrics.json` would find neither the model nor the
+> threshold nor any number matching — which is a defect in its own right, and is why this banner
+> exists. Current shipped operating point, after the switch to monotone logistic regression *and*
+> the addition of correlated drift and unplanned stoppages to the simulation:
+>
+> | Metric (config E, threshold **0.17**) | Value |
+> |---|---|
+> | PR-AUC vs. no-skill | 0.0799 vs. 0.0084 — **9.5× no-skill** |
+> | Precision at threshold | **39.1%** |
+> | Recall at threshold | **2.9%** (9 of 309 real defects caught) |
+> | Flag rate | **0.06%** of station-ticks |
+> | False alarms per true catch | **~1.6** |
+> | Confusion matrix | tn=36,388 fp=14 fn=300 tp=9 |
+>
+> The trade inverted: the deployed model is now precise and quiet rather than sensitive and noisy.
+> Roughly two flags in five are real, against roughly one in thirty-eight before. Recall paid for it.
+> Which side of that trade is correct is a plant conversation, not a modelling one — but the numbers
+> are now on the dashboard's Method tab, not just in this file.
+
+| Metric (config E, threshold 0.02 — **historical, XGBoost**) | Value |
 |---|---|
 | PR-AUC vs. no-skill (base rate) | 0.0264 vs. 0.0050 — **5.3× no-skill** |
 | Precision at threshold | **2.66%** |
@@ -153,14 +174,13 @@ actual MCC-tuned operating threshold. Computed directly and now persisted in
 | Flag rate | 7.7% of all units flagged |
 | Confusion matrix | tn=30,876 fp=2,529 fn=99 tp=69 |
 
-Read plainly: at this threshold, the model catches 4 in 10 real defects, but raises roughly 37 false
+Read plainly: at that threshold, the model caught 4 in 10 real defects but raised roughly 37 false
 alarms for every true catch. This is exactly the brief's own "false alarms erode trust" complexity,
-made concrete rather than left implicit behind a single MCC scalar (which was already reported —
-0.088 — but without the precision/recall context that explains *why* it's that low). Not a reason to
-distrust the model's ranking ability (ROC-AUC 0.827, 5.3× no-skill PR-AUC are both real signal); a
+made concrete rather than left implicit behind a single MCC scalar. Not a reason to
+distrust the model's ranking ability; a
 reason the *deployed threshold* would need a real conversation with plant operators about acceptable
 flag volume, which this prototype does not attempt to have on their behalf. `tests/test_scorer.py`
-now pins this reporting as a regression (`test_metrics_report_the_operating_point_not_just_ranking_metrics`).
+pins this reporting as a regression (`test_metrics_report_the_operating_point_not_just_ranking_metrics`).
 
 ---
 

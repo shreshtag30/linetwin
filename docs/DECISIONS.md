@@ -14,22 +14,29 @@ against Round 2 Problem Track 4 "DigitalTwin.ai".
 itself uses. Given that this project cites a granted Accenture patent as prior art (see
 `PRIOR_ART.md`), an explicit patent grant is the coherent choice.
 
-**Station count: 6 (A–F), stated as an illustrative subset.** The brief's reference parameters
-suggest 30–50 stations but mark them "directional, not a fixed dataset" and explicitly invite our own
-reasonable assumptions, clearly stated. So:
+**Station count: 30, across all three zones.** The brief's reference parameters suggest 30–50
+stations and mark them "directional, not a fixed dataset". LineTwin sits at the lower end of that
+range: body 1–12, paint 13–18, final assembly 19–30.
 
-> The README says this on its first screen, before a reader can infer it: **LineTwin models 6 stations
-> as a deliberately scoped subset of a 30–50 station line. Station count, topology, cycle-time
-> distributions and per-station instrumentation are all configuration — scaling is a new YAML file,
-> not new code.**
+> The README says this on its first screen, before a reader can infer it: **LineTwin models 30
+> stations as a deliberately scoped subset of a 30–50 station line. Station count, zones,
+> cycle-time distributions and per-station instrumentation are all configuration.**
+
+*(This section originally recorded a 6-station line (A–F) — the Phase 2 scope — and was never
+updated when the line grew to 30. Corrected. One claim in the old wording is also narrowed: topology
+is **not** configuration. The line is a hardcoded serial chain (`sim/line.py`) and the inference
+graph a hardcoded path (`graph/inference.py`), so a parallel or rework-loop layout would need new
+code, not a new YAML file. See `docs/REQUIREMENTS.md` row A6.)*
 
 Leaving this to be discovered would read as a limitation concealed. Stating it first makes it a
 scoping decision, which is what it is.
 
-**Sensor coverage: 4 of 6 instrumented, C and E dark (33 % gap).** The brief describes "a majority of
+**Sensor coverage: 22 of 30 instrumented, 8 dark (27 % gap).** The brief describes "a majority of
 stations well-instrumented, a meaningful minority reliant on manual checks". We deliberately run a
 heavier gap than that phrasing implies, so the inference layer is genuinely load-bearing rather than
-decorative. A 5-of-6 line would let the twin look fine whether or not the inference worked.
+decorative — and that is now *measured*, not asserted: the graph layer beats a zone-base baseline by
+20–32 % at every coverage level (`docs/phases/degradation_curve.csv`). A lighter gap would let the
+twin look fine whether or not the inference worked.
 
 **Positioning: Digital Shadow (Kritzinger) / Digital Twin Prototype (Grieves & Vickers) / Predictive
 maturity (Villegas et al.).** All three stated in the README **before being asked**, plus a
@@ -63,9 +70,18 @@ Same code, one config value.
 
 Four changes the literature review earned, none of which were in the original build brief:
 
-1. **Significance gate before naming a bottleneck** (Kumbhar et al. 2023). ANOVA + Tukey–Kramer over
-   recent active-period samples; the detector returns "no significant bottleneck" rather than always
-   naming someone. This is the citable answer to the brief's false-alarm warning.
+1. **Significance ANNOTATION beside every bottleneck verdict** (Kumbhar et al. 2023). ANOVA +
+   Tukey–Kramer over the run's accumulated active-period durations; every verdict carries
+   `confidence: established | provisional | none` and a p-value.
+   **CORRECTION — this was written as a "gate" and it is not one.** The plan was for the detector to
+   return "no significant bottleneck" rather than always naming someone. That was not built, and
+   deliberately so: at 8 ticks/s a station has completed 1–2 active periods inside the 2-second
+   live-response requirement, nowhere near enough for ANOVA's asymptotics, and consecutive active
+   periods at one station are autocorrelated anyway, so the independence assumption does not hold.
+   `diagnostic/bottleneck.py` states this correctly and always answers, with the annotation saying
+   how confident the answer is. Two other documents described the unbuilt gate as if it shipped;
+   both are corrected. The annotation is still the citable answer to the brief's false-alarm
+   warning — it is just an honest one.
 2. **Three-state value tagging — OBSERVED / INFERRED / SIMULATED**, each with confidence and
    freshness, and **zero / missing / not-applicable kept distinct** (Detzner & Eigner 2018). Prevents
    the classic failure of treating an estimate as a measurement.
@@ -88,7 +104,7 @@ Recorded so that a later phase does not quietly re-add them under time pressure.
 | Paired baseline-vs-intervention counterfactual chart | Ship the single number with `qc_lag_units` visible as config, so it reads as checkable arithmetic rather than an oracle |
 | Telemetry-inspector extras (changed-field highlighting, msg/s meter, frame pinning) | Keep verbatim `event.data`, `Δ ms`, and the copyable `curl` line — those are the parts that prove anything |
 | Devcontainer / Codespaces | An untested door that fails on a judge's click manufactures exactly the concealed limitation we swear off |
-| `shap`, `crepes`, `orjson` dependencies | `booster.predict(dm, pred_contribs=True)` is exact TreeSHAP in C++, no runtime dependency |
+| `shap`, `crepes`, `orjson` dependencies | Driver contributions are computed **exactly** as `weight × feature value` — the literal logit decomposition of Model B's linear model — so no attribution library is needed at all. (This row previously justified the cut by "`booster.predict(dm, pred_contribs=True)` is exact TreeSHAP in C++". There is no booster any more; the conclusion holds, the reason changed — see `docs/adr/ADR-003`'s superseded banner) |
 | Ten ADRs | Four: sim core, transport, ML data provenance, sensor gap |
 | `/ws/twin` | Either build it in ~15 lines against the existing bus, or delete any claim it exists. Never carry a claim that depends on a stretch item |
 | n=10 station scaling tests | Nobody will ask; the config-driven argument is made by `scenarios/`, not by a test |

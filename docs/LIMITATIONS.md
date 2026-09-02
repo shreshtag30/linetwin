@@ -6,14 +6,24 @@ was found and why it was accepted rather than "fixed away."
 
 ## Data
 
-**Every parameter is either calibrated against a cited public source or stamped
-`synthetic — uncalibrated`.** There is no real per-station MES/PLC dataset behind any cycle time,
-buffer capacity, or state-duration in this project — that data is proprietary to individual plants
-and not publicly available. `docs/CITATIONS.md` is the full ledger: what is calibrated against
-Future Factories V2 and PyScrew, what is a genuine real-data benchmark (AI4I 2020), what is a single
-published figure used for one number only (Bosch's ~0.58% defect prevalence, never downloaded), and
-what is honestly synthetic with a stated note on what would calibrate it. This is the single largest
-scope limitation of the whole project and is stated on the README's first screen, not buried here.
+**Every timing parameter in this project is `synthetic — uncalibrated`.** There is no real
+per-station MES/PLC dataset behind any cycle time, buffer capacity, condition-drift scale, MTBF/MTTR
+or state-duration here — that data is proprietary to individual plants and not publicly available.
+
+CORRECTION: this paragraph previously read "either calibrated against a cited public source or
+stamped `synthetic — uncalibrated`" and named Future Factories V2 and PyScrew as things parameters
+were "calibrated against". **They are not, and never were.** Only paper summaries of those datasets
+were ever read; no number in this repository came out of either. `scenarios/line30.yaml` recorded
+that retraction in its own header from Phase 3 onward, but it was never propagated here or to
+`docs/CITATIONS.md`, so two of the three documents a reader checks first were asserting a
+calibration the scenario file explicitly denied. Both are now corrected.
+
+`docs/CITATIONS.md` remains the full ledger: what is a genuine real-data benchmark (AI4I 2020, used
+by Model A only), what is a single published figure used for exactly one number (Bosch's ~0.58 %
+defect prevalence, as a calibration *target*, never downloaded), what is cited for qualitative
+grounding only, and what is honestly synthetic with a stated note on what would calibrate it. This is
+the single largest scope limitation of the whole project and is stated on the README's first screen,
+not buried here.
 
 **The 30-station topology, the 22/8 instrumented/dark split, and the three-zone character
 (body/paint/final) are illustrative choices**, scoped to be plausible for an automotive line and

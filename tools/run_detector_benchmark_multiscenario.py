@@ -55,7 +55,13 @@ SCENARIO_MULTIPLIER = {
 
 SEEDS = list(range(1, 11))  # 10 replications per scenario, same as the original benchmark
 DURATION_S = 20_000.0
-GROUND_TRUTH_SEEDS = list(range(1, 21))
+# 60, raised from 20 -- see tools/run_sensitivity_analysis.py's SEEDS comment
+# for the measurement. With correlated condition drift in the line, 20
+# replications no longer separate the engineered bottleneck from its nearest
+# competitor, so the ground truth this benchmark scores against has to be
+# measured more precisely or the verification gate below passes or fails on
+# noise.
+GROUND_TRUTH_SEEDS = list(range(1, 61))
 
 
 def build_scenario_config(base: LineConfig, station_id: str) -> LineConfig:

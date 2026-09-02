@@ -146,8 +146,22 @@ class TaggedValue(BaseModel):
     source: ValueSource = ValueSource.OBSERVED
     missingness: Missingness = Missingness.PRESENT
     confidence: Confidence = 1.0
-    # Seconds since the last DIRECT observation feeding this value. 0.0 when
-    # observed this tick; grows while a station is dark.
+    # Seconds since the last DIRECT observation feeding this value.
+    #
+    # HONEST SCOPE, narrowed from what this comment used to promise. It read
+    # "grows while a station is dark", which was never implemented: the engine
+    # writes 0.0 for every observed AND every inferred value
+    # (sim/engine.py:_station_snapshot). For an inferred value that is
+    # defensible rather than lazy -- the observations feeding it are the
+    # neighbours' CURRENT readings, re-solved every tick, so nothing about the
+    # estimate is stale in the sense this field means. What the field does NOT
+    # yet capture is that those neighbour readings are themselves a rolling
+    # mean over recent completions (sim/station.py:RECENT_CYCLE_WINDOW), so a
+    # fully rigorous value would be the mean age of that window rather than
+    # zero. That refinement is not made, and this comment now says so instead
+    # of describing behaviour the code does not have. The one case where the
+    # field is genuinely non-zero is a station with no reading at all, where
+    # the engine reports the elapsed sim time.
     staleness_s: float = Field(default=0.0, ge=0.0)
     # Fraction of this estimate attributable to real sensor evidence. 1.0 when
     # observed. Only meaningful when source is INFERRED.

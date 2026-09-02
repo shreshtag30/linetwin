@@ -14,8 +14,17 @@ uv run python tools/run_server.py
 ```
 
 Open `http://127.0.0.1:8000/` in a real browser window (not the app's own preview pane, for beat 2 —
-DevTools needs a real browser). Let it run ~10 seconds before recording starts so the charts already
-have a visible trend, not a flat empty line.
+DevTools needs a real browser).
+
+**Let it run ~30 seconds before recording**, not 10. Measured warm-up: the KPIs, floor map,
+constraint card and risk list populate on the first tick; the rolling-horizon forecast takes ~1 s;
+the genealogy panel takes ~5 s (it is an HTTP round trip throttled to once per ~40 ticks) *and*
+needs units to have completed a path. Thirty seconds also gives the Plant Manager timeline and the
+alert drawer something in them, both of which are empty on a cold start.
+
+**Record at ≥1440 px wide.** The live-proof strip scrolls horizontally with a hidden scrollbar
+below roughly 1100 px, which silently pushes the Kill / Resume / Restart buttons out of frame —
+and those are the buttons beat 3 depends on.
 
 ---
 
@@ -60,14 +69,30 @@ produce a matching raw HTTP stream a `curl` process is reading independently.
 **What it proves:** the "live" dashboard is actually driven by the server process, not a recording
 or a client-side simulation that would keep running regardless.
 
-1. With the dashboard visibly ticking (vitals bar advancing, charts moving), switch to the terminal
-   running `tools/run_server.py`.
-2. Press **Ctrl-C** on camera. Narrate that this kills the actual server process.
-3. Cut back to the browser (still same unbroken take): every number in the vitals bar should freeze
-   at its last value, the connection lamp should turn red, and the charts should stop advancing.
-4. Wait a few seconds so the freeze is unambiguous, not a slow frame.
-5. Restart: `uv run python tools/run_server.py` again, reload the page. The dashboard should resume
-   ticking from a fresh run (new `run_id`, tick counter back near zero).
+1. With the dashboard visibly ticking (live-proof strip advancing, charts moving), click
+   **Kill stream** in the strip first, on camera. The lamp turns **red**, the "Stream closed. Every
+   value below is frozen at its last received tick." banner appears, and the whole page dims.
+   Narrate that this closes the browser's connection.
+2. Click **Resume** — everything picks up again. That shows the freeze was the connection, not a
+   crash.
+3. Now switch to the terminal running `tools/run_server.py` and press **Ctrl-C** on camera. Narrate
+   that this kills the actual server process.
+4. Cut back to the browser (still the same unbroken take): every number freezes at its last value
+   and the charts stop advancing.
+
+   > **Say "amber", not "red", for this step.** `EventSource` retries automatically after an
+   > unexpected drop, so `readyState` is CONNECTING, not CLOSED, and the lamp goes **amber**
+   > ("connecting") — it keeps trying to reach a server that is no longer there. Red is reserved for
+   > a deliberate Kill, which is why step 1 exists: it shows the red state honestly, under a
+   > condition that genuinely produces it. An earlier version of this script claimed Ctrl-C turned
+   > the lamp red; it does not, and narrating that on camera would be the one falsifiable claim in a
+   > sequence whose entire point is falsifiability.
+
+5. Wait a few seconds so the freeze is unambiguous, not a slow frame.
+6. Restart the server: `uv run python tools/run_server.py`. The page reconnects on its own — no
+   reload needed — and resumes from a fresh run (new `run_id`, tick counter back near zero).
+   Alternatively, with the server up, press **Restart** in the strip: the tick counter drops to 1
+   and climbs again within about half a second, on the same open connection.
 
 **Why it's convincing:** nothing about a scripted or recorded demo would freeze in exact sync with
 an operator killing an unrelated terminal process — this is the single hardest beat to fake.

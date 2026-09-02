@@ -40,35 +40,52 @@ before this phase existed; it now asserts `INFERRED` with a valid `sensor_share`
 
 ---
 
-## The graceful-degradation curve is NOT graceful — reported as measured, not reframed
+## The degradation curve — and the baseline arm that should have been there from the start
 
-Pre-checked before being promised anywhere, per this project's own standing rule:
+Pre-checked before being promised anywhere, per this project's own standing rule. Current
+measurement (`docs/phases/degradation_curve.csv`, 30 independently-seeded runs per point):
 
-| Coverage | Dark stations | Mean relative error |
-|---|---|---|
-| 100% | 0 | 0.000 |
-| 90% | 3 | 0.236 |
-| 80% | 6 | 0.234 |
-| 70% | 9 | 0.209 |
-| 60% | 12 | 0.218 |
-| 50% | 15 | 0.220 |
-| 40% | 18 | 0.210 |
+| Coverage | Dark stations | Graph inference | Zone-base baseline | Improvement |
+|---|---|---|---|---|
+| 90% | 3 | 0.052 | 0.078 | **+32.5%** |
+| 80% | 6 | 0.050 | 0.067 | **+25.1%** |
+| 70% | 9 | 0.051 | 0.064 | **+20.0%** |
+| 60% | 12 | 0.048 | 0.067 | **+27.6%** |
+| 50% | 15 | 0.048 | 0.066 | **+27.4%** |
+| 40% | 18 | 0.050 | 0.067 | **+26.2%** |
 
-Error jumps sharply from 0 to ~21–24% the instant **any** station goes dark, then stays **roughly
-flat** from 90% down to 40% coverage — not the smooth, gradually-worsening slope "graceful
-degradation" would suggest. This is reported honestly rather than reframed to sound better, with the
-methodological caveat that matters: the "error" is measured against a single noisy instantaneous
-cycle-time sample, and the harmonic extension estimates a smoothed value, not that sample — so a
-meaningful share of the floor is likely inherent sampling noise the method was never going to match,
-not a sign the inference itself gets worse with more missing stations. The genuinely useful reading
-of this curve: inference accuracy does not meaningfully deteriorate as coverage keeps dropping to 40%
-— a robustness story, not a graceful-decay one.
+Two readings, both honest. **Degradation is gradual**: error stays between 4.8% and 5.2% while
+coverage falls from 90% to 40% — the inference does not fall off a cliff as stations go dark.
+And **the layer earns its place**: it beats the trivial estimator by 20–32% throughout.
 
-*(Re-run once, post-Phase-10, after two simulation-core confounds were found and fixed — uneven
-zone-to-zone base cycle times and an unpaced arrival source, both detailed in Phase 5's addendum. The
-plateau is now slightly lower (~21–24% vs. the original ~27–32%) and the shape is otherwise
-unchanged — consistent with a less pathologically-noisy baseline line producing a cleaner signal, not
-a change in what this curve is actually reporting.)*
+### What this table used to say, and why it was wrong
+
+The previous version of this section was titled *"The graceful-degradation curve is NOT graceful"*
+and reported a plateau at ~21–24% error with a sharp jump from 0. Three things were wrong with it,
+all found by audit:
+
+1. **There was no baseline arm at all.** The experiment measured the graph layer's absolute error
+   and nothing else, so it could not answer whether the layer helped. Adding the arm revealed it had
+   been **33–121% WORSE** than simply using each dark station's own zone base cycle time. The
+   mathematics was never wrong — `tests/test_inference.py` verified the harmonic identities exactly,
+   and still does — but harmonic extension assumes *smoothness over the graph*, and the simulation
+   was drawing every station independently around a fixed per-zone constant. Correct method, applied
+   where its own precondition did not hold. Fixed at the source: `scenarios/line30.yaml` now carries
+   a spatially-correlated `condition` field (shared tool-wear/environmental drift), which is both
+   what the method needs and what the brief describes. A baseline-beating assertion is now a test,
+   because an identity test cannot tell you a method is useless.
+2. **The "sharp jump from 0" was an artefact.** The 100%-coverage row had zero dark stations, so
+   `harmonic_extension` returned an empty list and the mean of nothing was reported as 0.0 error.
+   There is no cliff; there was nothing to infer. That row is gone.
+3. **The 30 "trials" per point were one simulation.** `run_one_trial` accepted a `seed` argument and
+   its body never used it, so every trial re-ran the identical line and only the random dark-set
+   varied. They were averaged as if independent. Each trial now genuinely reseeds.
+
+The methodological caveat that *does* survive: error is measured against each station's own
+cycle-time **trend** (a rolling mean over recent completions), not against one instantaneous sample.
+That is deliberate and matches what this layer has always claimed — `docs/LIMITATIONS.md`: "inference
+recovers a dark station's cycle-time trend, never whether a specific unit was defective." Scoring it
+against a single draw would score it against irreducible per-unit noise it never claimed to predict.
 
 ---
 

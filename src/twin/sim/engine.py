@@ -327,11 +327,20 @@ class Engine:
         one definition of "what does the graph layer currently know" rather
         than two that could silently drift apart.
 
-        Uses each instrumented station's last completed cycle time, or its
-        own zone's base cycle time as a fallback before that station has
+        Uses each instrumented station's MEAN RECENT cycle time, or its own
+        zone's base cycle time as a fallback before that station has
         completed anything yet -- a station that has not produced a real
         reading is not meaningfully different from one with no sensor at
         all, for this one tick.
+
+        The smoothing is load-bearing, not cosmetic. A single
+        `last_cycle_time_s` is one lognormal draw whose per-unit noise (cv
+        0.12-0.28) swamps the shared drift the graph layer is trying to
+        recover, so feeding it raw made the inference strictly worse than
+        ignoring the neighbours entirely. What the layer can honestly
+        recover is a station's cycle-time TREND -- which is exactly what
+        docs/LIMITATIONS.md already claimed for it -- so the trend is what
+        it is now fed. See sim/station.py:RECENT_CYCLE_WINDOW.
         """
         observed: dict[str, float] = {}
         prior: dict[str, float] = {}
@@ -339,7 +348,7 @@ class Engine:
             zone_base = self.config.base_cycle_time_of[sid]
             if sid in self.config.instrumented_stations:
                 station = self.line.stations[sid]
-                observed[sid] = station.last_cycle_time_s or zone_base
+                observed[sid] = station.mean_recent_cycle_time_s or zone_base
             else:
                 prior[sid] = zone_base
         return observed, prior
@@ -352,7 +361,12 @@ class Engine:
         """
         observed, prior = self._observed_and_prior_cycle_times()
         return greedy_sensor_placement(
-            self.config.station_ids, self.config.dark_stations, observed, prior, budget
+            self.config.station_ids,
+            self.config.dark_stations,
+            observed,
+            prior,
+            budget,
+            weights=self.config.sensor_gap_weights,
         )
 
     def _compute_inference(self) -> None:
@@ -368,6 +382,7 @@ class Engine:
             self.config.dark_stations,
             observed,
             prior,
+            **self.config.sensor_gap_weights,
         )
         self._last_inference = {r.station_id: r for r in results}
 

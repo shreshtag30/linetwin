@@ -177,10 +177,23 @@ semantics, so no mapping to our features exists even in principle.
 
 **Future Factories V2.** University of South Carolina. arXiv:2502.05020 / arXiv:2401.15544. Real
 industrial-grade assembly pipeline, 292 assembly cycles, 21 distinct cycle states.
-*Used for:* grounding cycle-time and state-duration parameters. Published summary statistics only.
+*Used for:* **nothing quantitative.** Cited only for the qualitative fact that real assembly
+pipelines with this general shape and variance structure exist and are published.
 
 **PyScrew.** Zenodo DOI 10.5281/zenodo.14729547. Real industrial screw-driving time series.
-*Used for:* grounding fastening-station variability, relevant to automotive torque stations.
+*Used for:* **nothing quantitative.** Cited only for the qualitative fact that real fastening-station
+time series exist and are published.
+
+> **RETRACTION, and it belongs here rather than only in the file that caught it.** Both entries above
+> previously read *"Used for: grounding cycle-time and state-duration parameters"* and *"grounding
+> fastening-station variability"*. That was false. This project has read paper SUMMARIES of both
+> datasets, never the raw tables; **no number anywhere in this repository was extracted from either
+> dataset**. `scenarios/line30.yaml` has recorded that retraction in its own header since Phase 3 —
+> every parameter in it is stamped `synthetic — uncalibrated` — but the correction was never
+> propagated here, so the honesty ledger itself was asserting a calibration the scenario file denied.
+> Found by audit; corrected in both places. The one number in this project with a real, checkable
+> external anchor is Bosch's ~0.58 % defect prevalence, used as a calibration *target* and nothing
+> else.
 
 ---
 
@@ -232,7 +245,7 @@ appears — including in slides we hand to teammates.
 | PR-AUC headline | Published beside the single-feature `cycle_time_z` logistic baseline, whatever the lift. If lift is small, the honest reframe is published instead |
 | MCC | **Always printed with its threshold.** Note: MCC for a constant classifier is undefined (0/0); scikit-learn returns 0.0. State this explicitly — a statistician will check it. **Verified in Phase 8** (`ml/benchmark_public.py`, `sklearn` as pinned in this project): no warning is actually raised for this case in the installed version — an earlier draft of this row assumed one is; corrected to what was actually observed rather than left as an unverified assumption |
 | Accuracy | Appears exactly **once** in the whole repository: in the sentence explaining why it is never reported |
-| Brier score + reliability curve | Reported alongside discrimination metrics, because calibration is the part that governs false-alarm trust |
+| ~~Brier score + reliability curve~~ | **WITHDRAWN — this row described something that does not exist.** No Brier score is computed for Model B (`station_risk_metrics.json` has no such field) and no reliability curve exists anywhere in the repository: no plotting code, no committed image. Brier appears only in `ml/benchmark_public.py`, which is Model A on AI4I and is architecturally forbidden from touching the twin. What IS reported for calibration and false-alarm trust, and is now on screen rather than only in a file: precision, recall, flag rate, false alarms per true catch, and the full confusion matrix at the model's own MCC-tuned threshold. Adding a genuine Brier + reliability curve would be a real improvement; claiming one that was never computed is the exact failure this ledger exists to prevent |
 | Ablation / inference errors | Measured against **our own** `oracle_risk`, and said so |
 | Units-at-risk, dollars saved | Output of the QC-latency model with `qc_lag_units` visible as a config parameter — presented as checkable arithmetic, not an oracle |
 | Sensor-derived share ("Inferred — N % sensor-derived") | An exact partition of unity from the influence operator, with **zero tuning parameters** — not a heuristic decay |

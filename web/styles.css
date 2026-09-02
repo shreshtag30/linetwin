@@ -797,3 +797,25 @@ body.stream-killed .canvas { opacity: .4; filter: saturate(.12); pointer-events:
   color: var(--ink-3); font-size: 10px; margin-left: 6px;
 }
 
+
+/* ==========================================================================
+   Degradation curve (Method tab) — inline SVG, two arms
+   ========================================================================== */
+.degradation-plot { margin: 4px 0 10px; max-width: 720px; }
+.dg-svg { width: 100%; height: auto; display: block; }
+.dg-grid { stroke: var(--line); stroke-width: 1; }
+.dg-tick { fill: var(--ink-2); font-family: var(--font); font-size: 10px; }
+.dg-axis { fill: var(--ink-2); font-family: var(--font); font-size: 10px; }
+.dg-line { fill: none; stroke-width: 2.6; stroke-linejoin: round; stroke-linecap: round; }
+.dg-line.dg-graph { stroke: var(--purple); }
+.dg-line.dg-prior { stroke: var(--ink-3); stroke-dasharray: 4 3; }
+.dg-dot.dg-graph { fill: var(--purple); }
+.dg-dot.dg-prior { fill: var(--ink-3); }
+.dg-legend {
+  display: flex; gap: 18px; margin-top: 6px;
+  font-family: var(--font); font-size: 11px; color: var(--ink-2);
+}
+.dg-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dg-sw { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+.dg-sw.dg-graph { background: var(--purple); }
+.dg-sw.dg-prior { background: var(--ink-3); }

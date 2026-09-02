@@ -24,21 +24,30 @@ def greedy_sensor_placement(
     observed_values: dict[str, float],
     prior_values: dict[str, float],
     budget: int,
+    *,
+    weights: dict[str, float] | None = None,
 ) -> list[str]:
     """Returns up to `budget` currently-dark station ids, in the order they
     would be most valuable to instrument -- greedily, recomputing the full
     harmonic solve after each pick (a dark station's neighbors' sensor_share
     changes once it is "instrumented", so this is not a one-shot ranking).
+
+    `weights` passes the scenario's own `sensor_gap_weights` through to the
+    solve, so a site with different instrumentation density can retune the
+    operator from configuration rather than by editing code.
     """
     remaining_dark = set(dark_stations)
     remaining_prior = dict(prior_values)
     working_observed = dict(observed_values)
     picks: list[str] = []
+    kw = weights or {}
 
     for _ in range(min(budget, len(dark_stations))):
         if not remaining_dark:
             break
-        results = harmonic_extension(station_ids, remaining_dark, working_observed, remaining_prior)
+        results = harmonic_extension(
+            station_ids, remaining_dark, working_observed, remaining_prior, **kw
+        )
         # Greedily pick the station currently LEAST explained by real sensor
         # evidence -- the one relying most on its prior.
         worst = min(results, key=lambda r: r.sensor_share)

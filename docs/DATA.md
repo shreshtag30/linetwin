@@ -178,7 +178,38 @@ calibrator on train+calib) recovered XGBoost to 89.4% of the ceiling. That looke
 story until a follow-up audit ran the one comparison missing from the "things tried" list: a plain
 logistic regression against the identical held-out config E.
 
-**Measured**: non-negative-constrained (monotone) logistic regression reaches **PR-AUC 0.0645 — 100.6%
+> **RE-MEASURED after the simulation gained correlated condition drift and unplanned stoppages**
+> (`scenarios/line30.yaml`'s `condition` and `breakdowns` blocks — see
+> `docs/phases/phase-09-sensor-gaps-genealogy.md` for why they were added). Every figure in this
+> addendum was recomputed against the new data-generating process. Current, from
+> `ml/models/station_risk_metrics.json`:
+>
+> | | before drift/breakdowns | now |
+> |---|---|---|
+> | PR-AUC (config E, unseen) | 0.0645 | **0.0799** |
+> | vs no-skill | 7.8× | **9.5×** |
+> | % of Bayes-optimal ceiling | 100.6% | **97.5%** |
+> | ROC-AUC | 0.839 | **0.837** |
+> | Lift over `cycle_time_z` baseline | +62.3% | **+77.7%** |
+> | MCC-tuned threshold | 0.08 | **0.17** |
+> | **Precision at threshold** | 14.7% | **39.1%** |
+> | Recall at threshold | 6.9% | **2.9%** |
+> | False alarms per true catch | ~5.8 | **~1.6** |
+>
+> The direction is worth stating plainly: a richer, more realistic line made the problem *more*
+> learnable, not less. Precision at the operating point nearly tripled — because congestion caused by
+> a correlated slowdown or a real stoppage is a stronger, less ambiguous signal than congestion
+> caused by independent per-unit noise. Recall fell, because the MCC-tuned threshold moved up to buy
+> that precision. That trade is the right one for the brief's stated concern (false alarms erode
+> floor trust) and it is now shown on the dashboard rather than only stored here. The model no longer
+> sits marginally *above* the ceiling point estimate; at 97.5% it sits just below it, which is the
+> more comfortable side of a number that can only be approached.
+>
+> The original measurement is kept below because the *reasoning* is unchanged and is the point of
+> this addendum.
+
+**Measured** (original run, superseded numerically by the table above): non-negative-constrained
+(monotone) logistic regression reaches **PR-AUC 0.0645 — 100.6%
 of the ceiling** (0.0641), a **+13.4% relative improvement over XGBoost's 89.4%**, and a genuine
 **+62.3% lift over the single-feature baseline** (vs. XGBoost's honest-but-modest 44.2%). This is not
 a coincidence: `oracle_risk = sigmoid(0.9·cycle_time_z + 2.6·queue_pressure + 2.2·blocked_fraction +

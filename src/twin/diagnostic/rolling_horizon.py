@@ -14,8 +14,15 @@ history, active-period history, live perturbation multipliers, and current
 queue depth (seeded with placeholder units, not the exact real ones). The
 forecast is therefore "what happens if the current configuration and
 congestion level continue," run forward on a fresh, independently-seeded
-RNG stream -- a genuine Monte Carlo projection under current conditions, not
+RNG stream -- a single stochastic projection under current conditions, not
 a claim of exact future replay.
+
+CORRECTION: this previously read "a genuine Monte Carlo projection." It is
+not. Monte Carlo implies sampling a distribution across replications; this
+is ONE fork on one fixed seed (`fork_seed` below), which yields a point
+forecast with no spread attached. Running an ensemble and reporting a
+distribution would earn the stronger word. That is not done here, so the
+word is withdrawn rather than the claim quietly kept.
 """
 
 from __future__ import annotations

@@ -49,8 +49,8 @@ Elements relevant to our work:
 |---|---|---|
 | Trace mechanism | Graph traversal upstream from an alert | Same idea, adopted and cited. We traverse the per-unit event log along the line topology |
 | Time handling | Transfer-delay realignment: (alert time − cumulative lag) | **Adopted directly, with attribution.** This is the single most useful thing in the document for us, and it solves a real problem in our genealogy trace |
-| Attribution logic | **Threshold chaining** — upstream node's metric tested against a second fixed threshold; attribution is binary | **Calibrated probability.** The trace reports a confidence, produced by an isotonically-calibrated model, rather than a binary label. We also report the affected unit range explicitly |
-| False-positive control | None disclosed. No reported false-positive rate | Significance gate (ANOVA + Tukey–Kramer) on the bottleneck side; calibration with Brier score and reliability curve on the risk side; a published single-feature baseline |
+| Attribution logic | **Threshold chaining** — upstream node's metric tested against a second fixed threshold; attribution is binary | **Continuous confidence, not a binary label.** The trace reports a monotone confidence from the origin visit's cycle-time z-score, plus the affected unit range explicitly. **Correction:** this row previously said "produced by an isotonically-calibrated model" — it is not. It is a fixed logistic map `1/(1+e^(−z/2))` (`diagnostic/genealogy.py`), and that function's own docstring says it is "deliberately NOT claimed as calibrated against any real outcome", because on a synthetic line there is no ground truth for "was this really the origin". Continuous and monotone is still a genuine difference from binary threshold chaining; calibrated is a stronger word that was not earned |
+| False-positive control | None disclosed. No reported false-positive rate | ANOVA + Tukey–Kramer significance **annotation** on the bottleneck side (an annotation, not a suppression gate — see `diagnostic/bottleneck.py`); on the risk side, the operating point published in full: precision, recall, flag rate, false alarms per true catch, and the confusion matrix at the model's own MCC-tuned threshold, beside a `cycle_time_z` baseline. (This row previously claimed "Brier score and reliability curve" — neither is computed for Model B; corrected rather than left standing) |
 | Evidence of performance | **None.** No dataset, no evaluation, no baseline, no metric anywhere in the document | Metrics on a held-out line configuration, published beside a baseline, with the label-generating process documented before any metric was computed |
 | Sensor gaps | Generic-path mechanism places unmapped legacy sources into the hierarchy | Harmonic extension actually *estimates state* at stations with no instrumentation, with an exact partition-of-unity attribution of how much of each estimate is sensor-derived |
 | Scope | Whole-plant contextualisation across heterogeneous sources; taxonomy-driven | One line, deliberately. Depth over breadth |
@@ -93,7 +93,11 @@ Additional rules:
 Yes — US 12,353,197 B2, granted July 2025, and it is documented in `docs/PRIOR_ART.md` along with
 which of its ideas we adopted. We took its transfer-delay realignment directly and cite it. Where we
 differ is attribution: the patent chains fixed thresholds and reports a binary result with no disclosed
-false-positive rate; we carry a calibrated probability, publish the calibration curve, and gate
-bottleneck claims on a significance test — because the brief specifically warns that false alarms
-erode floor-level trust. The patent solves getting plant data into a traversable graph. We are working
+false-positive rate; we carry a continuous confidence rather than a binary label, publish the risk
+model's full operating point (precision, recall, flag rate, false alarms per true catch, confusion
+matrix), and **annotate** bottleneck claims with a significance test — because the brief specifically
+warns that false alarms erode floor-level trust. Two words in that sentence were previously stronger
+than the code: the genealogy confidence is monotone but not calibrated against any outcome, there is
+no calibration curve, and the significance test annotates rather than gates (a hard gate would delay
+detection past the 2 s live-response requirement — `diagnostic/bottleneck.py` explains why). The patent solves getting plant data into a traversable graph. We are working
 the layer above: what to do when that graph has holes in it.

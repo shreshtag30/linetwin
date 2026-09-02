@@ -6,9 +6,76 @@ exactly). Both are verified numerically here, not just asserted in prose.
 
 from __future__ import annotations
 
+import random
+from pathlib import Path
+
 import pytest
+import simpy
 
 from twin.graph.inference import harmonic_extension
+from twin.sim.line import build_line
+
+SCENARIO = Path(__file__).resolve().parents[1] / "scenarios" / "line30.yaml"
+
+
+def test_inference_beats_the_prior_only_baseline_on_the_live_line() -> None:
+    """THE test this module was missing, and whose absence hid a real defect
+    for the whole life of the project.
+
+    Every other test here verifies the linear ALGEBRA -- exact mean at
+    lambda=0, exact partition of unity. All of those passed, and all of them
+    still pass, while the layer was doing measurable HARM: an audit comparing
+    `harmonic_extension` against the trivial "just use this station's own
+    zone base cycle time" estimator found the graph solve was 33-121% WORSE
+    at every sensor-coverage level. Correct mathematics, applied where its
+    own precondition did not hold -- the simulation drew each station's cycle
+    time independently, so a neighbour's reading carried no information and
+    averaging it in only added noise.
+
+    Fixed at the source (scenarios/line30.yaml's `condition` block gives the
+    line the spatially-correlated structure harmonic extension assumes, and
+    sim/station.py smooths the observation over RECENT_CYCLE_WINDOW
+    completions so the shared signal is not buried under per-unit noise).
+    This test is the guard: an identity test cannot tell you a method is
+    useless, only a baseline can, so the baseline is now pinned.
+    """
+    env = simpy.Environment()
+    line = build_line(env, SCENARIO)
+    env.run(until=20_000.0)
+
+    weights = line.config.sensor_gap_weights
+    truth = {
+        sid: st.mean_recent_cycle_time_s
+        for sid, st in line.stations.items()
+        if st.mean_recent_cycle_time_s is not None
+    }
+    station_ids = [sid for sid in line.config.station_ids if sid in truth]
+    assert len(station_ids) > 25, "line did not warm up enough to measure inference quality"
+
+    rng = random.Random(20260828)
+    graph_errors: list[float] = []
+    prior_errors: list[float] = []
+    for _ in range(30):
+        dark = set(rng.sample(station_ids, 8))  # the shipped 8-of-30 dark ratio
+        observed = {sid: truth[sid] for sid in station_ids if sid not in dark}
+        prior = {sid: line.config.base_cycle_time_of[sid] for sid in dark}
+
+        results = harmonic_extension(station_ids, dark, observed, prior, **weights)
+        graph_errors.append(
+            sum(abs(r.value - truth[r.station_id]) / truth[r.station_id] for r in results)
+            / len(results)
+        )
+        prior_errors.append(
+            sum(abs(prior[sid] - truth[sid]) / truth[sid] for sid in dark) / len(dark)
+        )
+
+    graph = sum(graph_errors) / len(graph_errors)
+    prior_only = sum(prior_errors) / len(prior_errors)
+    assert graph < prior_only, (
+        f"harmonic extension ({graph:.4f} mean relative error) must beat the "
+        f"prior-only baseline ({prior_only:.4f}), or the sensor-gap layer is "
+        f"decorative and README.md's 'load-bearing' claim is false"
+    )
 
 
 def test_symmetric_path_lambda_zero_gives_the_interior_node_the_exact_mean() -> None:

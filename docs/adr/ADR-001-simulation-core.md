@@ -44,8 +44,15 @@ not merely assumed to.
 the same timestep it was issued. Setting a station's state to STARVED/BLOCKED unconditionally —
 rather than only when the request did *not* fire immediately — truncates every active period to
 one cycle time, which silently degrades the Active Period Method into the discredited Utilization
-method (Roser, Nakano & Tanaka 2001/2002's own published comparison: APM MSE 0.04% vs Utilization
-29.21%). `test_active_period.py` asserts WORKING→DOWN→WORKING counts as **one** active period
+method. (This sentence previously cited "Roser, Nakano & Tanaka 2001/2002's own published comparison:
+APM MSE 0.04% vs Utilization 29.21%", pointing at `docs/CITATIONS.md`. **That table is not in
+`docs/CITATIONS.md` and neither number appears anywhere in this repository** — the citation was
+dangling, in violation of the ledger's own rule that a claim in none of its three sections does not
+go in the project. The specific figures are withdrawn. The qualitative claim they were supporting —
+that the Active Period Method outperforms the utilization method, which is the reason APM is
+deployed here — stands on this project's OWN measurement instead:
+`docs/phases/detector_comparison_multiscenario.csv`.)
+`test_active_period.py` asserts WORKING→DOWN→WORKING counts as **one** active period
 (a breakdown does not end it — the counterintuitive, load-bearing rule from the cited paper) and
 WORKING→STARVED→WORKING counts as **two** — again checked to fail red with the guard removed.
 

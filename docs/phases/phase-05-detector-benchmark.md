@@ -304,17 +304,36 @@ they were pinned against genuinely, honestly changed. Each updated test's docstr
 (verified directly; no more per-zone tuning), across 3 distinct scenarios (30 scenario×seed trials,
 each scenario's ground truth independently verified):
 
-| Detector | Accuracy | Note |
-|---|---|---|
-| Busy Ratio | 93.3% | Best overall — full statistical structure, not just a point estimate |
-| Active Period (both variants) | 90.0% | |
-| Queue Length | 70.0% | Was 0% before any of this investigation — the "consistent weakness" was entirely the two confounds above |
-| Turning Point | 70.0% | |
-| Arrow | 66.7% | |
-| Utilization | 66.7% | |
+| Detector | Accuracy | S05 | S17 | S25 | Note |
+|---|---|---|---|---|---|
+| Busy Ratio | **90.0%** | 100% | 80% | 90% | Best overall — full statistical structure, not just a point estimate |
+| Active Period (both variants) | **86.7%** | 100% | 70% | 90% | The deployed method |
+| Turning Point | 66.7% | 100% | 70% | 30% | |
+| Queue Length | 56.7% | 90% | 20% | 60% | |
+| Arrow | 56.7% | 100% | 70% | 0% | |
+| Utilization | 53.3% | 100% | 60% | 0% | |
 
-Single-scenario (S17 only, 10 seeds, matching the original benchmark exactly): Utilization 90%, Arrow
-100%, Turning Point 90%, Busy Ratio 80%, Active Period (both variants) 70%, Queue Length 70% — a
+**RE-MEASURED** after the simulation gained spatially-correlated condition drift and unplanned
+stoppages (`scenarios/line30.yaml`). The previous figures — Busy Ratio 93.3%, Active Period 90.0%,
+Queue Length 70.0%, Turning Point 70.0%, Arrow 66.7%, Utilization 66.7% — were measured on a line
+where every station varied independently around a fixed per-zone constant. (Three of those six were
+also simply wrong against their own CSV, found by recomputing: Queue Length was 60.0% not 70.0%,
+Turning Point 73.3% not 70.0%, Utilization 63.3% not 66.7%. The two figures that reached the
+dashboard were the two that were right.)
+
+**The ranking is the finding, not the absolute numbers.** Adding realistic correlated variation
+separates the methods with statistical structure from the point-statistic ones. Busy Ratio and
+Active Period lose a few points and stay near the top; Arrow and Utilization collapse to **0% on
+S25** — they compare single blocking/starving probabilities, and a correlated regional slowdown is
+exactly what that cannot distinguish from a real constraint. Everything sitting at 100% on a
+frictionless line told us far less than this does.
+
+Busy Ratio still edges the method we deploy, and the dashboard says so.
+
+Single-scenario (S17 only, 10 seeds): see the S17 column above — Busy Ratio 80%, Active Period 70%,
+Arrow 70%, Turning Point 70%, Utilization 60%, Queue Length 20%. (The superseded text here claimed
+Utilization 90%, Arrow 100%, Turning Point 90%, Queue Length 70%; three of those did not match the
+committed CSV even before the simulation changed.) A
 different ranking than the multi-scenario average, because S25 (final zone, the highest-CV zone at
 0.28) turned out to be a genuinely harder case for the simpler point-statistic methods (Utilization,
 Arrow, Turning Point): its own ground-truth sensitivity sits in a tightly-clustered region with 5+
@@ -327,5 +346,6 @@ way S13 and S01 were). The methods with more statistical structure (Busy Ratio, 
 lower because a fixable confound was left in** — that is what "finished" means here, not a specific
 target number reached.
 
-Full data: `docs/phases/detector_comparison.csv` (single-scenario), `docs/phases/detector_comparison_
-multiscenario.csv` (three-scenario). 160/160 tests green.
+Full data: `docs/phases/detector_comparison_multiscenario.csv` (three-scenario, current).
+`docs/phases/detector_comparison.csv` is the older single-scenario run and predates the condition/
+breakdown changes.

@@ -22,7 +22,18 @@ from twin.diagnostic.ground_truth import ground_truth_station, measure_all_stati
 from twin.sim.line import LineConfig
 
 SCENARIO = Path(__file__).resolve().parents[1] / "scenarios" / "line30.yaml"
-SEEDS = list(range(1, 21))  # 20 replications per station
+# 60, raised from 20. Correlated condition drift (scenarios/line30.yaml's
+# `condition` block) adds genuine run-to-run variance, and 20 replications no
+# longer resolve rank 1 from rank 2. Measured directly on S17 (the engineered
+# bottleneck) against its two closest competitors:
+#     20 seeds -> S17 -0.4272, S20 -0.4416, S29 -0.4224  => picks S20 (wrong)
+#     60 seeds -> S17 -0.4560, S20 -0.4176, S29 -0.4064  => picks S17
+#    120 seeds -> S17 -0.4596, S20 -0.3964, S29 -0.4078  => picks S17
+# The structure was never in doubt; the estimator was under-powered. Raising
+# replications is the correct response to added variance -- lowering the drift
+# until a noisy estimator agrees would have been fitting the measurement to the
+# tool.
+SEEDS = list(range(1, 61))
 DURATION_S = 20_000.0
 
 # The shifting-bottleneck sweep is restricted to 4 plausible candidates rather
@@ -62,6 +73,36 @@ def main() -> None:
                 [rank, r.station_id, r.mean_sensitivity, r.ci_low, r.ci_high, r.n_replications]
             )
     print(f"wrote {gt_path} -- ground truth: {ground_truth_station(results)}")
+
+    # SEPARATION DIAGNOSTIC, printed rather than left for a reader to
+    # discover. `ground_truth_station` takes an argmax, which says nothing
+    # about whether rank 1 is distinguishable from rank 2. On this line it
+    # frequently is not: the top several stations' bootstrap CIs overlap, so
+    # "top-1 accuracy" is being scored against an ordering that is partly
+    # within noise. That is a real limitation of a sensitivity-derived ground
+    # truth on a line whose stations are deliberately balanced, and it is the
+    # honest frame for every detector number computed against it.
+    top, second = ranked[0], ranked[1]
+    gap = abs(top.mean_sensitivity) - abs(second.mean_sensitivity)
+    overlaps = not (top.ci_high < second.ci_low or top.ci_low > second.ci_high)
+    n_overlapping = sum(
+        1
+        for r in ranked[1:]
+        if not (top.ci_high < r.ci_low or top.ci_low > r.ci_high)
+    )
+    print(
+        f"  separation: #1 {top.station_id} ({top.mean_sensitivity:+.4f}) vs "
+        f"#2 {second.station_id} ({second.mean_sensitivity:+.4f}), gap={gap:+.4f}"
+    )
+    print(
+        f"  #1 CI overlaps #2: {overlaps}; "
+        f"{n_overlapping} of {len(ranked) - 1} other stations overlap #1's CI"
+    )
+    if overlaps:
+        print(
+            "  NOTE: rank 1 is NOT statistically separated from rank 2. Report "
+            "top-1 detector accuracy against this ground truth with that caveat."
+        )
 
     print(f"Running shifting-bottleneck sweep over {len(SHIFT_SWEEP)} variant mixes...")
     t0 = time.time()

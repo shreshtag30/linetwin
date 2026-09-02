@@ -3,29 +3,29 @@
   "model": {
     "model_type": "logistic_regression_monotone_constrained",
     "calibration_method": "platt_sigmoid",
-    "pr_auc": 0.06447433454439234,
-    "no_skill_pr_auc": 0.008286242121277983,
-    "pr_auc_over_no_skill_x": 7.780889527573748,
-    "ceiling_pr_auc": 0.06409302249953028,
-    "pr_auc_over_ceiling_pct": 100.59493534552043,
-    "roc_auc": 0.839092183305841,
-    "mcc_at_threshold": 0.09546182029419618,
-    "threshold": 0.08,
-    "precision_at_threshold": 0.14685314685314685,
-    "recall_at_threshold": 0.06885245901639345,
-    "f1_at_threshold": 0.09375,
+    "pr_auc": 0.07986902571057303,
+    "no_skill_pr_auc": 0.008417095693388903,
+    "pr_auc_over_no_skill_x": 9.488905510876524,
+    "ceiling_pr_auc": 0.08192409469199544,
+    "pr_auc_over_ceiling_pct": 97.49149625742132,
+    "roc_auc": 0.8374961260530334,
+    "mcc_at_threshold": 0.10493664110951433,
+    "threshold": 0.17,
+    "precision_at_threshold": 0.391304347826087,
+    "recall_at_threshold": 0.02912621359223301,
+    "f1_at_threshold": 0.05421686746987952,
     "confusion_matrix_at_threshold": {
-      "true_negative": 36381,
-      "false_positive": 122,
-      "false_negative": 284,
-      "true_positive": 21
+      "true_negative": 36388,
+      "false_positive": 14,
+      "false_negative": 300,
+      "true_positive": 9
     },
-    "flag_rate_at_threshold": 0.003885024994566399
+    "flag_rate_at_threshold": 0.0006265152134237694
   },
   "single_feature_baseline_cycle_time_z": {
-    "pr_auc": 0.0397258671943747
+    "pr_auc": 0.04494185795042013
   },
-  "lift_over_baseline_pct": 62.2981173171774,
+  "lift_over_baseline_pct": 77.71634140868086,
   "previous_model_for_comparison": {
     "model_type": "xgboost_monotone_constrained",
     "calibration_method": "isotonic_on_train_plus_calib",

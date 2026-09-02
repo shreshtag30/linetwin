@@ -1,7 +1,12 @@
-"""Six bottleneck detectors, scored against Phase 4's sensitivity ground truth.
+"""Seven bottleneck detectors, scored against Phase 4's sensitivity ground truth.
 
-All six read the same `LineRunStats` (run_stats.py) so the comparison is fair.
-Four produce a continuous per-station score (higher = more bottleneck-like):
+(Six were built in Phase 5; `score_active_period_normalized` was added later to
+fix a real confound and the count in this docstring was never updated. It said
+"six" while `ALL_DETECTORS` held seven and both committed CSVs carried seven
+rows per seed.)
+
+All seven read the same `LineRunStats` (run_stats.py) so the comparison is fair.
+Five produce a continuous per-station score (higher = more bottleneck-like):
 Utilization, Active Period (average duration), Busy Ratio, Queue Length. Two
 -- Arrow and Turning Point -- are, in their original published form, discrete
 graph-based methods that name a single station rather than score every
@@ -122,12 +127,21 @@ def score_queue_length(stats: LineRunStats) -> DetectorResult:
 
 
 def detect_arrow(stats: LineRunStats) -> DetectorResult:
-    """Kuo & Lim (1996): for each adjacent pair (i, i+1), compare i's blocking
-    probability to (i+1)'s starving probability. If i is blocked more than
-    i+1 is starved, draw an arrow i -> i+1 (i+1 is implicated); otherwise
-    i+1 -> i. The bottleneck is the station that is the target of both its
-    adjacent arrows (a graph sink) -- upstream stations block behind it,
-    downstream stations starve waiting for it.
+    """Kuo, Lim & Meerkov (1996): for each adjacent pair (i, i+1), compare i's
+    blocking probability to (i+1)'s starving probability. If i is blocked more
+    than i+1 is starved, draw an arrow i -> i+1 (i+1 is implicated); otherwise
+    i+1 -> i. In the published method the bottleneck is the station that is the
+    target of both its adjacent arrows -- a graph sink -- because upstream
+    stations block behind it and downstream stations starve waiting for it.
+
+    DEVIATION, stated rather than glossed: the code below takes the station of
+    maximum net in-degree, which is not identical to "is a sink". On a line
+    where no true sink exists (both arrows never converge on one station in a
+    given run) the published rule names nobody, whereas argmax always names
+    someone. Reporting a pick where the original method abstains would flatter
+    this detector's top-1 accuracy, so the difference is recorded here and the
+    result is reported as OUR operationalisation of Kuo, Lim & Meerkov, not as
+    their algorithm verbatim.
     """
     order = stats.station_order
     net_in_degree = dict.fromkeys(order, 0)
@@ -150,9 +164,16 @@ def detect_arrow(stats: LineRunStats) -> DetectorResult:
 def detect_turning_point(stats: LineRunStats) -> DetectorResult:
     """Li, Chang & Ni (2009): along the line, d_i = P(blocked_i) - P(starved_i)
     is positive upstream of the bottleneck (stations back up behind it) and
-    negative downstream (stations starve waiting for it). The turning point --
-    the last station where d_i is still non-negative before the sequence
-    turns negative -- is the bottleneck. If d is negative everywhere or
+    negative downstream (stations starve waiting for it). The turning point is
+    where that sequence changes sign.
+
+    NOTE on which side of the sign change is returned: this docstring used to
+    say "the last station where d_i is still non-negative" while the code
+    returned `order[i + 1]` -- the FIRST station with d_i < 0. The code is what
+    ran and what every committed result was produced by, so the description is
+    corrected to match it rather than the other way round; changing the
+    behaviour would silently invalidate both committed CSVs. If d is negative
+    everywhere or
     positive everywhere (no genuine turning point in this run), falls back to
     the station with d_i closest to zero, and this fallback is exposed via
     `DetectorResult.scores` being None either way, since this method's native

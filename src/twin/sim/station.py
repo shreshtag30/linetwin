@@ -30,11 +30,50 @@ Bug B -- the `.triggered` guard.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 
+import numpy as np
 import simpy
 
 from twin.contracts import StationState, Zone
+
+# How many recent completions `mean_recent_cycle_time_s` averages over.
+# A single `last_cycle_time_s` is one lognormal draw and is mostly
+# irreducible per-unit noise; a real OT tap or historian read would
+# aggregate over a short window before anything downstream consumed it.
+# The graph layer (graph/inference.py) reads the smoothed value, because
+# what it can legitimately recover is a station's cycle-time TREND, not
+# the duration of one specific unit -- which is exactly what this project
+# already claims for it (docs/LIMITATIONS.md).
+# 30 was chosen by measurement, not taste: the recoverable signal is the shared
+# drift (sigma 0.08) and the noise floor is this station's own per-unit cv
+# (0.12-0.28) divided by sqrt(window). At window=10 the graph layer beat the
+# zone-base estimator by 18%; at 30, by 27%.
+RECENT_CYCLE_WINDOW = 30
+
+
+@dataclass(frozen=True)
+class BreakdownProfile:
+    """Unplanned-stoppage parameters for one station.
+
+    `synthetic -- uncalibrated`, same discipline as every other timing
+    parameter here (docs/CITATIONS.md). What would calibrate it: the
+    plant's own MTBF/MTTR per station class from its CMMS work-order
+    history, which this project does not have.
+
+    Time-to-failure is measured in PRODUCTIVE seconds (a machine does not
+    wear while it is starved), and is exponential -- so by the memoryless
+    property, resampling the residual at the start of each work chunk is
+    exactly equivalent to carrying one continuous failure clock. That
+    equivalence is why `_work` below can sample per chunk without
+    introducing a bias.
+    """
+
+    mtbf_productive_s: float
+    detect_s: float
+    mttr_s: float
 
 
 class Station:
@@ -54,6 +93,8 @@ class Station:
         *,
         auto_start: bool = True,
         on_departure: Callable[[object, float, float, float], None] | None = None,
+        breakdowns: BreakdownProfile | None = None,
+        failure_rng: np.random.Generator | None = None,
         _unsafe_fire_and_forget_put: bool = False,
         _unsafe_unconditional_state_set: bool = False,
         _unsafe_close_period_on_every_transition: bool = False,
@@ -65,6 +106,10 @@ class Station:
         self.out_buf = out_buf  # None for the last station: units simply vanish (sink)
         self.cycle_time_sampler = cycle_time_sampler
         self.instrumented = instrumented
+        # Both None (the default) disables breakdowns entirely, which is what
+        # every pre-existing test that constructs a bare Station relies on.
+        self.breakdowns = breakdowns
+        self._failure_rng = failure_rng
         # Called (part, entered_at, exited_at, cycle_time_s) once per completed
         # cycle, before the downstream put is attempted. line.py uses this to
         # build the per-unit UnitEvent log that Phase 9's genealogy walks.
@@ -88,6 +133,11 @@ class Station:
 
         self.units_completed: int = 0
         self.last_cycle_time_s: float | None = None
+        # Recent completed cycle times, newest last. See RECENT_CYCLE_WINDOW.
+        self.recent_cycle_times: deque[float] = deque(maxlen=RECENT_CYCLE_WINDOW)
+        # Unplanned stoppages that actually occurred, for reporting.
+        self.breakdown_count: int = 0
+        self.downtime_s: float = 0.0
 
         self.process: simpy.Process | None = None
         if auto_start:
@@ -169,7 +219,11 @@ class Station:
             self._set_state(StationState.WORKING)
             cycle_time = self.cycle_time_sampler(part)
             self.last_cycle_time_s = cycle_time
-            yield self.env.timeout(cycle_time)
+            self.recent_cycle_times.append(cycle_time)
+            # Consumes `cycle_time` of PRODUCTIVE time, interleaved with any
+            # unplanned stoppage that fires during it. Unchanged when
+            # breakdowns are disabled: a single timeout, exactly as before.
+            yield from self._work(cycle_time)
             self.units_completed += 1
             exited_at = self.env.now
 
@@ -198,6 +252,64 @@ class Station:
                 self._set_state(StationState.BLOCKED)
             yield put
 
+    def _work(self, cycle_time: float):
+        """Spend `cycle_time` of PRODUCTIVE time on the current unit, pausing
+        for any unplanned stoppage that fires along the way.
+
+        The state walk is WORKING -> DOWN (fault present, not yet being
+        worked) -> REPAIR -> WORKING. All three are ACTIVE
+        (contracts.StationState), so `_set_state` deliberately does NOT close
+        the active period across them -- which is the counterintuitive,
+        load-bearing property the Active Period Method depends on, and which
+        before this existed was reachable only from a synthetic unit test.
+        `mode_decomposition` (diagnostic/bottleneck.py) is what finally makes
+        that visible: a station can now be constraint-by-downtime rather than
+        constraint-by-slow-work, and the verdict says which.
+
+        Note `last_cycle_time_s` remains PRODUCTIVE time, not wall-clock
+        occupancy -- it is what a per-unit cycle-time sensor would report.
+        Downtime is carried by the active-period and time_in_state
+        bookkeeping instead, so the two are never conflated.
+        """
+        if self.breakdowns is None or self._failure_rng is None:
+            yield self.env.timeout(cycle_time)
+            return
+
+        profile = self.breakdowns
+        remaining = cycle_time
+        while remaining > 1e-9:
+            # Exponential residual time-to-failure. Memorylessness makes
+            # resampling per chunk identical to one continuous failure clock
+            # -- see BreakdownProfile's docstring.
+            time_to_failure = float(self._failure_rng.exponential(profile.mtbf_productive_s))
+            if time_to_failure >= remaining:
+                yield self.env.timeout(remaining)
+                return
+
+            yield self.env.timeout(time_to_failure)
+            remaining -= time_to_failure
+
+            down_at = self.env.now
+            self._set_state(StationState.DOWN)
+            yield self.env.timeout(profile.detect_s)
+            self._set_state(StationState.REPAIR)
+            yield self.env.timeout(float(self._failure_rng.exponential(profile.mttr_s)))
+            self._set_state(StationState.WORKING)
+
+            self.breakdown_count += 1
+            self.downtime_s += self.env.now - down_at
+
+    @property
+    def mean_recent_cycle_time_s(self) -> float | None:
+        """Mean of the last `RECENT_CYCLE_WINDOW` completions, or None before
+        this station has completed anything. This -- not the single most
+        recent draw -- is what the sensor-gap inference layer reads; see
+        RECENT_CYCLE_WINDOW for why.
+        """
+        if not self.recent_cycle_times:
+            return None
+        return sum(self.recent_cycle_times) / len(self.recent_cycle_times)
+
     def _deferred_put(self, part: object):
         """Only reachable via _unsafe_fire_and_forget_put; exists so the
         regression test can construct Bug A without duplicating the put logic.
@@ -205,4 +317,4 @@ class Station:
         yield self.out_buf.put(part)
 
 
-__all__ = ["Station"]
+__all__ = ["RECENT_CYCLE_WINDOW", "BreakdownProfile", "Station"]

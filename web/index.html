@@ -19,7 +19,7 @@
   <!-- v= is a hand-bumped cache-buster. StaticFiles has no build step and no
        content-hashed filenames, so without it a browser cache can serve stale
        JS after a deploy indefinitely. -->
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=17">
 </head>
 <body>
 
@@ -192,7 +192,6 @@
           </div>
           <button id="ctl-apply" class="btn-primary">Apply</button>
           <p class="ack" id="ctl-ack"></p>
-          <div id="ctl-narration" class="narration-wrap" hidden></div>
         </section>
 
         <section class="card" id="panel-trend">
@@ -207,6 +206,14 @@
           </div>
         </section>
       </div>
+
+      <!-- Full width, deliberately. This is the causal narration -- what the
+           perturbation should do, then what it actually did, computed from
+           real snapshots a few seconds later. It used to render inside the
+           300px control column, where a ~600-character paragraph became
+           fifteen wrapped lines and stretched the chart card beside it. It is
+           the signature moment of the demo and it gets the full width. -->
+      <div id="ctl-narration" class="narration-wrap" hidden></div>
 
       <div class="grid grid-2">
 
@@ -312,7 +319,7 @@
             <div><dt>Units affected</dt><dd id="rc-affected">–</dd></div>
             <div><dt>Realigned time</dt><dd id="rc-realigned">–</dd></div>
           </dl>
-          <p class="footnote">A calibrated signal from cycle-time deviation, not causal certainty.</p>
+          <p class="footnote">A monotone signal from cycle-time deviation &mdash; not calibrated against any real outcome, and not causal certainty.</p>
         </section>
       </div>
 
@@ -362,7 +369,7 @@
       <section class="card" id="panel-placement">
         <header class="card-head">
           <h2>Next sensors to fit</h2>
-          <span class="head-note">Greedy submodular placement &middot; 1&minus;1/e guarantee</span>
+          <span class="head-note">Greedy, ranked by evidence coverage</span>
         </header>
         <div class="field field-inline">
           <label for="ld-budget">Budget this window</label>
@@ -377,9 +384,9 @@
           <h2>Measured, not projected</h2>
         </header>
         <div class="proof-grid">
-          <div class="proof-cell"><span class="proof-n">172</span><span class="proof-t">tests passing, CI on Ubuntu and Windows</span></div>
-          <div class="proof-cell"><span class="proof-n">90.0%</span><span class="proof-t">detector top-1 across three engineered-bottleneck scenarios</span></div>
-          <div class="proof-cell"><span class="proof-n" id="ld-proof-lift">+62.3%</span><span class="proof-t">Model B PR-AUC lift over best single feature, unseen config</span></div>
+          <div class="proof-cell"><span class="proof-n">172</span><span class="proof-t">tests passing locally; CI workflow committed, not yet run</span></div>
+          <div class="proof-cell"><span class="proof-n">86.7%</span><span class="proof-t">Active Period top-1 across three engineered-bottleneck scenarios</span></div>
+          <div class="proof-cell"><span class="proof-n" id="ld-proof-lift">+77.7%</span><span class="proof-t">Model B PR-AUC lift over the <code>cycle_time_z</code> baseline, unseen config</span></div>
           <div class="proof-cell"><span class="proof-n">22 / 30</span><span class="proof-t">stations wired; both graph identities hold numerically</span></div>
         </div>
       </section>
@@ -397,8 +404,8 @@
           <ol class="mech">
             <li><b>Bottleneck detection.</b> Active Period Method — longest continuous active run wins.
               A breakdown does not end an active period. Benchmarked over 30 scenario&times;seed trials:
-              Busy Ratio 93.3%, Active Period 90.0%. Reported as measured, not ranked to flatter the
-              deployed method.</li>
+              Busy Ratio 90.0%, Active Period 86.7%. Reported as measured, not ranked to flatter the
+              deployed method — Busy Ratio still edges the one we deploy.</li>
             <li><b>Defect risk.</b> Monotone (non-negative-constrained) logistic regression,
               Platt-calibrated, reported at its own MCC-tuned operating point.</li>
             <li><b>Sensor-gap inference.</b> Eight dark stations solved from a graph equation over their
@@ -426,15 +433,43 @@
           <span class="head-note">Line config E &mdash; never trained on</span>
         </header>
         <div class="metrics metrics-sm">
-          <div class="metric"><span class="m-label">PR-AUC</span><span class="m-value" id="mb-pr-auc">0.064</span><span class="m-unit">vs 0.008 no-skill</span></div>
-          <div class="metric"><span class="m-label">Over no-skill</span><span class="m-value" id="mb-no-skill-x">7.8&times;</span><span class="m-unit">precision-recall</span></div>
-          <div class="metric"><span class="m-label">ROC-AUC</span><span class="m-value" id="mb-roc-auc">0.839</span><span class="m-unit">ranking quality</span></div>
-          <div class="metric"><span class="m-label">Over baseline</span><span class="m-value" id="mb-lift">+62.3%</span><span class="m-unit">vs cycle_time_z alone</span></div>
+          <div class="metric"><span class="m-label">PR-AUC</span><span class="m-value" id="mb-pr-auc">0.080</span><span class="m-unit">vs 0.008 no-skill</span></div>
+          <div class="metric"><span class="m-label">Over no-skill</span><span class="m-value" id="mb-no-skill-x">9.5&times;</span><span class="m-unit">precision-recall</span></div>
+          <div class="metric"><span class="m-label">ROC-AUC</span><span class="m-value" id="mb-roc-auc">0.837</span><span class="m-unit">ranking quality</span></div>
+          <div class="metric"><span class="m-label">Over baseline</span><span class="m-value" id="mb-lift">+77.7%</span><span class="m-unit">vs cycle_time_z alone</span></div>
         </div>
+
+        <!-- The operating point, not just the ranking metrics. The brief names
+             false alarms as the thing that erodes floor trust, and these are
+             the numbers that decide it. They were computed and served all
+             along, then dropped before render — showing only the four
+             favourable ranking metrics above was the flattering half. -->
+        <h3 class="mini-h">At the deployed threshold <span class="mini-sub">what the floor actually sees</span></h3>
+        <div class="metrics metrics-sm">
+          <div class="metric"><span class="m-label">Precision</span><span class="m-value" id="mb-precision">39.1%</span><span class="m-unit">of flags are real</span></div>
+          <div class="metric"><span class="m-label">Recall</span><span class="m-value" id="mb-recall">2.9%</span><span class="m-unit">of defects caught</span></div>
+          <div class="metric"><span class="m-label">Flag rate</span><span class="m-value" id="mb-flagrate">0.06%</span><span class="m-unit">of station-ticks</span></div>
+          <div class="metric"><span class="m-label">False alarms</span><span class="m-value" id="mb-fa-ratio">1.6</span><span class="m-unit">per true catch</span></div>
+        </div>
+
+        <p class="footnote" id="mb-note">Reported at the model's own MCC-tuned threshold, not a round number chosen
+          to look good. Low recall is the deliberate trade: at this operating point the model stays quiet unless the
+          congestion signal is strong, because an alert feed that cries wolf is worse than no alert feed.</p>
         <p class="footnote">Small absolute numbers, published rather than a headline accuracy. Defects are rare —
-          no-skill scores 0.008 PR-AUC here — so the honest comparison is against that floor and the best single
-          feature. The label-generating process was published in <code>docs/DATA.md</code> before any of this was
-          computed against it.</p>
+          no-skill scores 0.008 PR-AUC here — so the honest comparison is against that floor and against the
+          <code>cycle_time_z</code> baseline, which is the single feature actually fitted for comparison. The
+          label-generating process was published in <code>docs/DATA.md</code> before any of this was computed
+          against it, and that label is linear by construction — so a linear model winning here is partly an
+          artefact of the synthetic process, stated plainly rather than claimed as a general result.</p>
+      </section>
+
+      <section class="card" id="panel-degradation">
+        <header class="card-head">
+          <h2>Sensor coverage vs inference error</h2>
+          <span class="head-note">Measured, both arms &middot; <code>docs/phases/degradation_curve.csv</code></span>
+        </header>
+        <div id="degradation-plot" class="degradation-plot"></div>
+        <p class="footnote" id="degradation-note">Loading the measured curve&hellip;</p>
       </section>
 
       <div class="grid grid-2">
@@ -442,7 +477,7 @@
           <header class="card-head"><h2>Where it breaks</h2></header>
           <ul class="limits">
             <li>Inference recovers a dark station's <b>cycle-time trend</b>, never whether a <b>specific unit</b> was defective.</li>
-            <li>The sensor-removal degradation curve is <b>not graceful</b>. It has a knee, and we plot it.</li>
+            <li>Model B's <b>label is linear by construction</b>, so a linear model being the best fit is partly an artefact of the synthetic label — not evidence it would win on real defect data.</li>
             <li>Model B's features do not yet consume the graph layer's inferred values.</li>
             <li>Consecutive active periods are autocorrelated, so the significance test's independence assumption does not strictly hold. Annotated, not suppressed.</li>
             <li>The leadership figure is an estimate from named assumptions.</li>
@@ -480,6 +515,6 @@
 </aside>
 
 <script src="vendor/uplot/uPlot.iife.min.js"></script>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

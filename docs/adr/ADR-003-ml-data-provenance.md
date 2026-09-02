@@ -1,6 +1,26 @@
 # ADR-003 — ML Data Provenance: Two Models, Seam Stated Loudly
 
-**Status:** Accepted (Phase 8)
+**Status:** **Partially superseded** (accepted Phase 8; Model B's algorithm section superseded
+post-Phase-10).
+
+> **What is superseded, and what still stands.** The *provenance decision* this ADR exists to record
+> — two separate models, a hard seam between them, Model A on a real public dataset and Model B on
+> simulation-derived data, never mixed — is unchanged and still governs the code
+> (`tests/test_server_import_hygiene.py` enforces the seam).
+>
+> **The algorithm choices below are stale.** This document specifies monotone **XGBoost** with
+> `monotone_constraints=(1,1,1,1,1)`, `max_bin=512`, **isotonic** calibration, and **TreeSHAP**
+> driver contributions via `pred_contribs=True`. None of that is what ships. Model B is a
+> non-negative-constrained (monotone) **logistic regression** with **Platt/sigmoid** calibration, and
+> driver contributions are computed **exactly** as `weight × feature value` — the literal
+> decomposition of a linear model's logit, which needs no SHAP approximation and no XGBoost at all.
+> The full audit that produced that change, including the measured comparison, is in
+> `docs/DATA.md`'s second addendum. The "+44.7% lift" figure quoted at the end of this document is
+> likewise superseded: it matches nothing currently committed — the shipped figure is in
+> `ml/models/station_risk_metrics.json`.
+>
+> This banner was added after an audit found an ADR marked *Accepted* describing techniques absent
+> from the codebase. Superseded ADRs are kept and marked, not deleted — but they must say so.
 
 ---
 
